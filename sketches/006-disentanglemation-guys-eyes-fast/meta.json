@@ -1,0 +1,9 @@
+{
+  "title": "Disentanglemation: Guys Eyes (fast)",
+  "date": "2026-11-03",
+  "tags": ["generative", "audio-reactive", "portrait", "performance"],
+  "description": "005 with the background drawn once per beat and reused, roughly halving the painting work. Backgrounds change on the beat instead of flickering in loud passages.",
+  "interaction": "pick a song or the mic  ·  tap to pause and resume",
+  "status": "wip",
+  "original": "fork of 005-disentanglemation-guys-eyes-optimized (from onlygenerated/ac-guyseyes, 2022)"
+}

@@ -1,0 +1,9 @@
+{
+  "title": "Disentanglemation: Guys Eyes (optimized)",
+  "date": "2026-11-03",
+  "tags": ["generative", "audio-reactive", "portrait", "performance"],
+  "description": "Pixel-for-pixel identical to 004 with less JavaScript work per frame, verified frame by frame.",
+  "interaction": "pick a song or the mic  ·  tap to pause and resume",
+  "status": "done",
+  "original": "fork of 004-disentanglemation-guys-eyes-fps (from onlygenerated/ac-guyseyes, 2022)"
+}

@@ -1,7 +1,41 @@
 {
   "generated": "2026-11-03",
-  "count": 4,
+  "count": 6,
   "sketches": [
+    {
+      "slug": "006-disentanglemation-guys-eyes-fast",
+      "number": 6,
+      "title": "Disentanglemation: Guys Eyes (fast)",
+      "date": "2026-11-03",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "performance"
+      ],
+      "description": "005 with the background drawn once per beat and reused, roughly halving the painting work. Backgrounds change on the beat instead of flickering in loud passages.",
+      "status": "wip",
+      "interaction": "pick a song or the mic  ·  tap to pause and resume",
+      "path": "sketches/006-disentanglemation-guys-eyes-fast/",
+      "thumb": null
+    },
+    {
+      "slug": "005-disentanglemation-guys-eyes-optimized",
+      "number": 5,
+      "title": "Disentanglemation: Guys Eyes (optimized)",
+      "date": "2026-11-03",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "performance"
+      ],
+      "description": "Pixel-for-pixel identical to 004 with less JavaScript work per frame, verified frame by frame.",
+      "status": "done",
+      "interaction": "pick a song or the mic  ·  tap to pause and resume",
+      "path": "sketches/005-disentanglemation-guys-eyes-optimized/",
+      "thumb": null
+    },
     {
       "slug": "004-disentanglemation-guys-eyes-fps",
       "number": 4,
