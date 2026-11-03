@@ -1,0 +1,9 @@
+{
+  "title": "Disentanglemation: Guys Eyes (fps)",
+  "date": "2026-11-03",
+  "tags": ["generative", "audio-reactive", "portrait", "performance"],
+  "description": "Sketch 003 with a live frame-rate readout. The baseline for making it more efficient.",
+  "interaction": "pick a song or the mic  ·  tap to pause and resume",
+  "status": "wip",
+  "original": "fork of 003-disentanglemation-guys-eyes (from onlygenerated/ac-guyseyes, 2022)"
+}
