@@ -39,6 +39,7 @@ tools/
 ## Running it
 
 - Local preview: `npm run dev`, then open http://localhost:3000. Works the same in PowerShell on Windows.
+- In the Claude desktop app, `.claude/launch.json` starts that same server in the Preview pane. After writing or changing a sketch, open it there (`/sketches/NNN-name/`), take a screenshot to check it looks right, and check the console for errors before saying it's done. For audio sketches, tap to start; if the mic isn't available, the demo audio fallback is fine for checking.
 - Live site: https://onlygenerated.github.io/sketchbook/ (GitHub Pages, deployed from the `main` branch root; `.nojekyll` keeps the `_template` folder served).
 
 ## Working from the phone (cloud sessions)
