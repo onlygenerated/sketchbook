@@ -1,0 +1,8 @@
+{
+  "title": "Flow field",
+  "date": "2026-11-03",
+  "tags": ["generative", "noise", "particles"],
+  "description": "Particles drift along a Perlin noise vector field, leaving ink-like trails.",
+  "interaction": "tap for a new seed  ·  hold to make a vortex",
+  "status": "done"
+}

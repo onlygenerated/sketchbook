@@ -1,0 +1,38 @@
+{
+  "generated": "2026-11-03",
+  "count": 2,
+  "sketches": [
+    {
+      "slug": "002-mic-bloom",
+      "number": 2,
+      "title": "Mic bloom",
+      "date": "2026-11-03",
+      "tags": [
+        "audio-reactive",
+        "microphone",
+        "radial"
+      ],
+      "description": "A radial flower driven by the microphone: petals are frequency bands, bass swells the core.",
+      "status": "done",
+      "interaction": "tap to start the mic  ·  tap again to shift colors",
+      "path": "sketches/002-mic-bloom/",
+      "thumb": "sketches/002-mic-bloom/thumb.png"
+    },
+    {
+      "slug": "001-flow-field",
+      "number": 1,
+      "title": "Flow field",
+      "date": "2026-11-03",
+      "tags": [
+        "generative",
+        "noise",
+        "particles"
+      ],
+      "description": "Particles drift along a Perlin noise vector field, leaving ink-like trails.",
+      "status": "done",
+      "interaction": "tap for a new seed  ·  hold to make a vortex",
+      "path": "sketches/001-flow-field/",
+      "thumb": "sketches/001-flow-field/thumb.png"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+/* Shared page shell for every sketch: full-window canvas plus a small overlay. */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0d0d0f;
+  touch-action: none; /* stop the page scrolling or zooming while drawing on a phone */
+  -webkit-tap-highlight-color: transparent;
+}
+canvas { display: block; }
+main { display: contents; }
+
+.shell {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font: 500 12px/1.3 ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color: #f2efe8;
+  transition: opacity 0.4s ease;
+  z-index: 10;
+}
+.shell.idle { opacity: 0; }
+
+.shell-bar {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shell-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shell-spacer { flex: 1; }
+.shell-title, .shell-hint span {
+  background: rgba(13, 13, 15, 0.55);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  padding: 7px 12px;
+}
+.shell-title:empty, .shell-hint span:empty { display: none; }
+.shell a, .shell button {
+  pointer-events: auto;
+  appearance: none;
+  border: 1px solid rgba(242, 239, 232, 0.25);
+  background: rgba(13, 13, 15, 0.55);
+  backdrop-filter: blur(6px);
+  color: inherit;
+  font: inherit;
+  padding: 7px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.shell a:hover, .shell button:hover { border-color: rgba(242, 239, 232, 0.6); }
+
+.shell-hint {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+/* Centered prompt, used by audio sketches for "tap to start". */
+.shell-prompt {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 500 14px/1.5 ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color: #f2efe8;
+  text-align: center;
+  padding: 24px;
+  pointer-events: none;
+  z-index: 5;
+}
+.shell-prompt[hidden] { display: none; }
+.shell-prompt span {
+  border: 1px solid rgba(242, 239, 232, 0.35);
+  border-radius: 999px;
+  padding: 12px 20px;
+  background: rgba(13, 13, 15, 0.6);
+}

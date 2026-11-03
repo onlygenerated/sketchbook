@@ -1,0 +1,8 @@
+{
+  "title": "Mic bloom",
+  "date": "2026-11-03",
+  "tags": ["audio-reactive", "microphone", "radial"],
+  "description": "A radial flower driven by the microphone: petals are frequency bands, bass swells the core.",
+  "interaction": "tap to start the mic  ·  tap again to shift colors",
+  "status": "done"
+}
