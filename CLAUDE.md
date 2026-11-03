@@ -54,6 +54,11 @@ Cloud sessions can't show Phil a running sketch, so:
 
 Before finishing, run `npm run check` (syntax-checks every sketch's JavaScript and validates each meta.json). If a headless browser is available, also load the page and check the console for errors.
 
+## Reporting back
+
+Whenever you finish an update to a sketch, end your message to Phil with a link to its live version:
+`https://onlygenerated.github.io/sketchbook/sketches/NNN-name/`. If the change is on a branch or in a pull request that isn't merged yet, say the link will work once it's merged into `main` (GitHub Pages takes a minute or two to update after that).
+
 ## Commits
 
 Short, present tense, sketch number first when relevant: `003 add trails to orbit sketch`.
