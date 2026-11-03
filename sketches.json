@@ -1,7 +1,23 @@
 {
   "generated": "2026-11-03",
-  "count": 2,
+  "count": 3,
   "sketches": [
+    {
+      "slug": "003-disentanglemation-guys-eyes",
+      "number": 3,
+      "title": "Disentanglemation: Guys Eyes",
+      "date": "2026-11-03",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait"
+      ],
+      "description": "Two woven profiles reshuffled on every beat of Animal Collective's \"Guys Eyes.\" A faithful port of the 2022 original.",
+      "status": "done",
+      "interaction": "pick a song or the mic  ·  tap to pause and resume",
+      "path": "sketches/003-disentanglemation-guys-eyes/",
+      "thumb": "sketches/003-disentanglemation-guys-eyes/thumb.png"
+    },
     {
       "slug": "002-mic-bloom",
       "number": 2,

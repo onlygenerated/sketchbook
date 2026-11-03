@@ -5,3 +5,6 @@ desktop.ini
 *.log
 .env
 .env.*
+
+# Personal media that must never be published (e.g. commercial music used by a sketch)
+private/

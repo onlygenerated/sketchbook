@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>003 Disentanglemation: Guys Eyes</title>
+  <link rel="stylesheet" href="../../shared/shell.css">
+  <style>
+    /* The original drew a square canvas; center it in the window. */
+    body { display: grid; place-items: center; height: 100dvh; }
+
+    .picker {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      gap: 10px;
+      padding: 24px;
+      text-align: center;
+      font: 500 14px/1.5 ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      color: #f2efe8;
+      background: rgba(13, 13, 15, 0.35);
+      z-index: 5;
+    }
+    .picker[hidden] { display: none; }
+    .picker h1 {
+      margin: 0 0 6px;
+      font: italic 400 clamp(28px, 7vw, 44px)/1.05 Georgia, serif;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    }
+    .picker button, .picker label {
+      appearance: none;
+      font: inherit;
+      color: inherit;
+      background: rgba(13, 13, 15, 0.7);
+      border: 1px solid rgba(242, 239, 232, 0.4);
+      border-radius: 999px;
+      padding: 11px 20px;
+      cursor: pointer;
+      min-width: 240px;
+    }
+    .picker button:hover, .picker label:hover { border-color: #f2efe8; }
+    .picker button[hidden] { display: none; }
+    .picker-note { margin: 4px 0 0; min-height: 1.5em; opacity: 0.85; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
+  </style>
+  <!-- Original libraries, kept for faithfulness: p5.js 1.2.0 and the p5.sound 0.3.12 bundled with it -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.2.0/lib/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.2.0/lib/addons/p5.sound.min.js"></script>
+  <script src="../../shared/shell.js"></script>
+</head>
+<body>
+  <div class="picker" id="picker">
+    <h1>Guys Eyes</h1>
+    <button type="button" id="play-local" hidden>play Guys Eyes</button>
+    <label>choose an audio file<input type="file" id="file" accept="audio/*" hidden></label>
+    <button type="button" id="use-mic">use microphone</button>
+    <p class="picker-note" id="picker-note"></p>
+  </div>
+  <script src="sketch.js"></script>
+</body>
+</html>

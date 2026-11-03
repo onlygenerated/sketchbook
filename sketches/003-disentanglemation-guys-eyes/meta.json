@@ -1,0 +1,9 @@
+{
+  "title": "Disentanglemation: Guys Eyes",
+  "date": "2026-11-03",
+  "tags": ["generative", "audio-reactive", "portrait"],
+  "description": "Two woven profiles reshuffled on every beat of Animal Collective's \"Guys Eyes.\" A faithful port of the 2022 original.",
+  "interaction": "pick a song or the mic  ·  tap to pause and resume",
+  "status": "done",
+  "original": "onlygenerated/ac-guyseyes (2022), p5.js 1.2.0 + p5.sound 0.3.12"
+}

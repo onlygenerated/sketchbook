@@ -34,6 +34,8 @@ tools/
 - **Audio:** use `shared/audio.js`. Browsers only allow the microphone after a user gesture and over HTTPS or localhost, so audio sketches show a "tap to start" prompt. Don't load p5.sound.
 - **Keep sketches self-contained.** Shared code goes in `shared/` only when two or more sketches need it.
 - **Assets** (images, audio, fonts) go in the sketch's own folder. Keep each file under a few MB.
+- **Never publish media Phil doesn't own** (commercial music, etc.). It goes in a `private/` folder inside the sketch, which `.gitignore` excludes, so it works locally but never reaches GitHub or the live site. The sketch must still work without it (offer a file picker or the mic). See `sketches/003-disentanglemation-guys-eyes`.
+- **Ports of Phil's older sketches** may keep their original library versions (for example p5 1.2.0 with p5.sound) when the goal is a faithful port. Say so in a comment at the top of `sketch.js` and in `meta.json` under `original`, and keep changes to the original code minimal and marked with `port:` comments.
 - **Writing style:** never use em-dashes in code comments, docs, commit messages or any prose. Use commas, colons, parentheses or separate sentences.
 
 ## Running it
