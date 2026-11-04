@@ -1,0 +1,9 @@
+{
+  "title": "Disentanglemation: Guys Eyes (live)",
+  "date": "2026-11-03",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "006 built for live use: follows whatever your laptop is playing, or any mic or audio input, with auto-level and a clean fullscreen mode.",
+  "interaction": "use laptop audio, a song or the mic  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 006-disentanglemation-guys-eyes-fast (from onlygenerated/ac-guyseyes, 2022)"
+}

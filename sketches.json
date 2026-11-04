@@ -1,7 +1,24 @@
 {
-  "generated": "2026-11-03",
-  "count": 6,
+  "generated": "2026-11-04",
+  "count": 7,
   "sketches": [
+    {
+      "slug": "007-disentanglemation-guys-eyes-live",
+      "number": 7,
+      "title": "Disentanglemation: Guys Eyes (live)",
+      "date": "2026-11-03",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "live"
+      ],
+      "description": "006 built for live use: follows whatever your laptop is playing, or any mic or audio input, with auto-level and a clean fullscreen mode.",
+      "status": "wip",
+      "interaction": "use laptop audio, a song or the mic  ·  tap to pause",
+      "path": "sketches/007-disentanglemation-guys-eyes-live/",
+      "thumb": null
+    },
     {
       "slug": "006-disentanglemation-guys-eyes-fast",
       "number": 6,
