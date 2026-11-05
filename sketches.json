@@ -1,7 +1,24 @@
 {
-  "generated": "2026-11-04",
-  "count": 7,
+  "generated": "2026-11-05",
+  "count": 8,
   "sketches": [
+    {
+      "slug": "008-disentanglemation-guys-eyes-wide",
+      "number": 8,
+      "title": "Disentanglemation: Guys Eyes (wide)",
+      "date": "2026-11-04",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "live"
+      ],
+      "description": "007 redesigned to fill any screen: the face lines and background reach the edges, and a spread control pushes the faces apart, fixed or moving with the music.",
+      "status": "wip",
+      "interaction": "use laptop audio, a song or the mic  ·  tap to pause",
+      "path": "sketches/008-disentanglemation-guys-eyes-wide/",
+      "thumb": null
+    },
     {
       "slug": "007-disentanglemation-guys-eyes-live",
       "number": 7,
