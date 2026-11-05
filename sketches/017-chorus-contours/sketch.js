@@ -31,7 +31,7 @@
 // Fifth pass: two faces face to face is "home", every third story. A garden of several turning
 // flowers of faces. Reflections meet their face at the waterline as one continuous outline. The
 // procession leader (and the eldest, and the top of a rising column) walks off the screen before
-// leaving. Busy stories cap their contours.
+// leaving. Busy stories cap their contours. Reflections stand on a wavy waterline.
 //
 // Sixth pass: a story lasts at most 8 beats. Backgrounds answer the beat in one of several ways
 // (whipping to the other side, pumping, cutting to new shapes, jumping in hue). No face has more
@@ -156,6 +156,19 @@ const NECK_END = 1.3; // the neck fades out by here, in head heights below the c
 const fitH = (cy, h, H) => Math.max(10, Math.min(h, (cy - H * 0.03) / 0.6, (H * 0.97 - cy) / 0.7));
 const wrapIndex = (i, n) => ((i % n) + n) % n;
 
+// Where a seat at the council table is when the table has turned by angle: its place on the
+// ellipse, its size (smaller at the far side), and which way the face turns toward the middle
+// (full profile at the ends of the table, narrowing toward the near and far sides).
+function councilSeat(o, angle, W) {
+  const th = o.th0 + angle, depth = (Math.sin(th) + 1) / 2;
+  const cx = W / 2 + o.rx * Math.cos(th);
+  return { cx, cy: o.cy0 + o.ry * Math.sin(th), h: o.h0 * (0.7 + 0.3 * depth), depth, dir: cx < W / 2 ? 1 : -1, squash: narrowTo(-Math.cos(th)) * (o.flip ? -1 : 1) };
+}
+// never thinner than a fifth of a profile, so a face seen from the front still reads as a face
+function narrowTo(c) {
+  return (c < 0 ? -1 : 1) * (0.2 + 0.8 * Math.abs(c));
+}
+
 // A ring of n faces in a square of side D around (cx, cy), crowns outward like petals, each facing
 // the back of the next; each beat everyone moves on one place (or, with pairs, neighbours face each
 // other and stay put).
@@ -265,17 +278,21 @@ const STORIES = {
   },
   // A council: people seated around a table, seen from the side; each half of the ring turns to
   // the middle. Those at the far side are smaller. One speaks at a time, and the word goes round.
+  // Half the time the table turns like a carousel: everyone rides round, turning as they go, so
+  // each face narrows as it passes the near and far sides of the table (seen from behind, or from
+  // the front) and opens into profile again at the ends. It turns faster on the beat.
   council: {
     weight: 8, tall: 0.5,
-    init: (W, H, tall) => ({ n: tall ? rndInt(4, 5) : rndInt(5, 8), order: chance(0.6) ? 1 : 0, spin: rnd(0, 6.28) }),
+    init: (W, H, tall) => ({ n: tall ? rndInt(4, 5) : rndInt(5, 8), order: chance(0.6) ? 1 : 0, spin: rnd(0, 6.28), carousel: chance(0.5), way: sign(), angle: 0, surge: 0 }),
     layout(st, b, W, H) {
       const n = st.n, rx = W * 0.33, ry = H * 0.17, cy0 = H * 0.5;
       const h0 = Math.min(Math.min(H, W * 1.1) * 0.42, (2 * rx) / (n / 2 + 0.6));
       const speaker = st.order ? b % n : Math.floor(Math.random() * n);
       return Array.from({ length: n }, (_, j) => {
-        const th = st.spin + (2 * Math.PI * j) / n, depth = (Math.sin(th) + 1) / 2; // 0 far side, 1 near side
-        const cx = W / 2 + rx * Math.cos(th), h = fitH(cy0, h0 * (0.7 + 0.3 * depth), H) * (j === speaker ? 1.1 : 0.95);
-        return { cx, cy: cy0 + ry * Math.sin(th), h, dir: cx < W / 2 ? 1 : -1, id: j, slot: j % 7, silent: j !== speaker, alpha: 0.75 + 0.25 * depth };
+        const orbit = { th0: st.spin + (2 * Math.PI * j) / n, rx, ry, cy0, h0: fitH(cy0, h0, H) * (j === speaker ? 1.1 : 0.95), flip: false };
+        const p = councilSeat(orbit, st.carousel ? st.angle : 0, W);
+        return { cx: p.cx, cy: p.cy, h: p.h, dir: p.dir, squash: st.carousel ? p.squash : undefined, orbit: st.carousel ? orbit : undefined,
+          id: j, slot: j % 7, silent: j !== speaker, alpha: 0.75 + 0.25 * p.depth };
       });
     },
   },
@@ -434,16 +451,17 @@ function stepStory(morph) {
     }
   }
   slots.forEach((sl, i) => {
-    if (story.flips.has(sl.id) && sl.mirror === undefined) sl.dir = -sl.dir;
+    if (story.flips.has(sl.id) && sl.mirror === undefined) { sl.dir = -sl.dir; if (sl.squash !== undefined) sl.squash = -sl.squash; if (sl.orbit) sl.orbit.flip = true; }
     const s = makeSinger(c, sl.cx, sl.h, sl.dir, {
       head: sl.head || (sl.kind ? Profiles.make(R, sl.kind) : Profiles.make(R)),
       rot: sl.rot || 0, id: sl.id, storyName: story.name, slot: sl.slot ?? i % 7, alphaMul: sl.alpha ?? 1,
-      anchor: !!sl.anchor,
+      anchor: !!sl.anchor, squash: sl.squash, orbit: sl.orbit,
       ...(sl.silent ? { silent: true, join: 0 } : {}),
       ...(sl.mirror !== undefined ? { mirrorOf: made[sl.mirror], axis: sl.axis, gapMul: made[sl.mirror].gapMul } : {}),
     });
     // (a child is drawn smaller; an anchored face keeps its neck exactly on the waterline)
     s.y = s.yNow = sl.anchor ? sl.cy + 0.7 * sl.h - NECK_END * s.h : sl.cy - 0.6 * s.h;
+    if (s.orbit) { s.orbit.hk = s.h / sl.h; s.dir = 1; } // a rider faces by squash alone, so it can turn smoothly
     if (sl.id === turned && slow) s.turn = { t: 0, T: rnd(0.5, 0.9) }; // a slow turn instead of a snap
     made.push(s);
     c.singers.push(s);
@@ -491,7 +509,18 @@ function finishRoster(c) {
 
 // Every frame: faces fade in (when they weren't formed from strands) and bob on the beat.
 function updateRoster(dt) {
+  const st = story.st;
+  if (story.name === 'council' && st.carousel) {
+    // half a seat per beat on average, faster when frantic, with a push on every beat
+    st.angle += st.way * dt * (Math.PI / st.n) / beatGap() * (0.5 + 0.9 * mood.F) * (1 + 2.5 * st.surge);
+    st.surge *= 0.9;
+  }
   for (const s of cast.singers) {
+    if (s.orbit) {
+      const p = councilSeat(s.orbit, st.angle || 0, width);
+      s.h = p.h * s.orbit.hk; s.squash = p.squash;
+      s.x = p.cx + s.dir * 0.43 * s.h; s.y = p.cy - 0.6 * s.h;
+    }
     if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / lerp(0.7, 0.15, mood.F)); if (s.fade >= 1) s.life = 'live'; }
     const f = smooth01(s.fade);
     s.yNow = s.anchor ? s.y : s.y + (1 - f) * 0.35 * s.h - s.bob * 0.03 * s.h; // (anchored faces hold still)
@@ -791,6 +820,7 @@ function listen(dt) {
 function onBeat() {
   const F = mood.F;
   bgBeat();
+  if (story.st.surge !== undefined) story.st.surge = 1;
   // Every beat the story takes a step and every face is drawn anew.
   if (story.b >= Math.min(8, story.phrase * (1 - 0.3 * F))) newStory(); // a story never outlasts 8 beats
   stepStory(true);
@@ -838,6 +868,7 @@ function draw() {
   const W = width, H = height, D = Math.min(W, H);
   for (const s of cast.singers) if (!s.mirrorOf) computeRings(s);
   for (const s of cast.singers) if (s.mirrorOf) computeRings(s);
+  drawWaterline(ctx, dt);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   for (const s of cast.singers) drawHead(ctx, s);
   updateStrands(ctx, dt);
@@ -942,7 +973,8 @@ function computeRings(s) {
   const pv = singerPivot(s), ang = -dir * s.tilt * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
   const cxs = s.x - dir * 0.43 * h + s.jx * h, oy = s.yNow + s.jy * h;
   // a slow turn: the head narrows (as if seen from the front) and widens again facing the new way
-  const fx = s.turn ? dir * -Math.cos(Math.PI * smooth01(s.turn.t / s.turn.T)) : dir, g0 = Profiles.G - 0.43;
+  const fx0 = s.squash !== undefined ? s.squash : dir; // (a carousel narrows faces seen from the front or back)
+  const fx = s.turn ? fx0 * -Math.cos(Math.PI * smooth01(s.turn.t / s.turn.T)) : fx0, g0 = Profiles.G - 0.43;
   // a story can turn a head right round (a ring of faces, a reflection), about its middle
   const rot = s.rot, cr = Math.cos(rot), sr = Math.sin(rot);
   const ccx = s.x - dir * 0.43 * h + s.jx * h, ccy = s.yNow + 0.6 * h + s.jy * h;
@@ -980,6 +1012,51 @@ function mirrorRings(s) {
     const us = U.polys.style[Math.min(k, U.rings - 1)], st = s.polys.style[k];
     st.rgb = us.rgb; st.w = us.w; st.a = us.a * s.alphaMul * f;
   }
+}
+
+// The waterline in a reflection: one long wavy line across the screen, drawn in from the side when
+// the story begins. It swells with the bass and the beat, and goes still where it meets each neck,
+// so the faces and their reflections stand in the water.
+const water = { a: 0, reveal: 0, hz: 0, rgb: [80, 80, 160], spans: [], from: 1, pts: new Float32Array(2 * 240) };
+function drawWaterline(ctx, dt) {
+  const on = story.name === 'reflection';
+  const anchors = cast.singers.filter((s) => s.anchor && s.polys);
+  if (on && anchors.length) {
+    const m = cast.singers.find((s) => s.mirrorOf);
+    if (m) water.hz = m.axis;
+    water.rgb = anchors[0].polys.style[0].rgb;
+    water.spans = anchors.map((u) => { const p = u.polys.pts[0]; return [Math.min(p[0], p[p.length - 2]), Math.max(p[0], p[p.length - 2])]; });
+    if (water.a < 0.01) { water.reveal = 0; water.from = Math.random() < 0.5 ? 1 : -1; }
+  }
+  water.a += ((on ? 1 : 0) - water.a) * (on ? 0.2 : 0.08);
+  if (on) water.reveal = Math.min(1, water.reveal + dt / 0.9);
+  if (water.a < 0.01) return;
+  const W = width, D = Math.min(W, height), F = mood.F;
+  const low = started ? (bands[0] + bands[1]) / 2 : 0.3;
+  const A = D * (0.009 + 0.022 * low + 0.016 * F + 0.014 * bg.flash);
+  const n = 240, end = smooth01(water.reveal);
+  for (const [layer, alpha, width_] of [[0, 0.9, 2.6], [1, 0.35, 1.4]]) {
+    ctx.beginPath();
+    for (let q = 0; q < n; q++) {
+      const u = q / (n - 1);
+      const x = water.from > 0 ? u * W * end : W - u * W * end;
+      // still where it meets a neck, rippling away from it
+      let still = 1;
+      for (const [a, b] of water.spans) {
+        const d = x < a ? a - x : x > b ? x - b : 0;
+        still = Math.min(still, smooth01(d / (0.06 * D)));
+      }
+      const wave = Math.sin(x * 0.011 - clock * (2 + 4 * F) + layer * 1.3) + 0.5 * Math.sin(x * 0.027 + clock * (1.3 + 3 * F));
+      const y = water.hz + layer * D * 0.018 + A * (layer ? 0.6 : 1) * still * wave;
+      if (q) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+    strokeStyleWater(ctx, alpha * water.a, width_);
+  }
+}
+function strokeStyleWater(ctx, a, w) {
+  ctx.strokeStyle = rgbaArr(water.rgb, a);
+  ctx.lineWidth = w;
+  ctx.stroke();
 }
 
 function strokePoly(ctx, pts, rgb, w, a) {
