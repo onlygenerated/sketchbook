@@ -224,7 +224,7 @@ const STORIES = {
   // Face to face: two people close together, a conversation or a quarrel. They take turns: the one
   // speaking leans in a little larger. Sometimes it is one person facing their own double.
   faceoff: {
-    weight: 3,
+    weight: 3, flipRate: 0.15, flipBack: 0.6, // they mostly look at each other; turning away is rare and brief
     init: () => ({ same: chance(0.3), yc: rnd(0.45, 0.55), turns: weighted([1, 2], [60, 40]) }),
     layout(st, b, W, H) {
       const cy = H * st.yc, h0 = fitH(cy, Math.min(Math.min(H, W * 1.1) * 0.66, (W * 0.92) / 2.0), H);
@@ -238,7 +238,7 @@ const STORIES = {
   // Call and response: two small choirs face each other across the middle and answer each other,
   // a few beats each.
   choirs: {
-    weight: 8,
+    weight: 8, flipRate: 0.4, flipBack: 0.4,
     init: (W, H, tall) => ({ m: tall ? 3 : rndInt(2, 3), turns: weighted([2, 4], [50, 50]) }),
     layout(st, b, W, H) {
       const m = st.m, sy = (H * 0.9) / m, h = Math.min(sy / 1.25, W * 0.32);
@@ -366,7 +366,7 @@ const STORIES = {
   // Small groups in conversation, as at a party: pairs facing each other, and a trio where two
   // turn to one. Within each group they take turns.
   clusters: {
-    weight: 7,
+    weight: 7, flipRate: 0.4, flipBack: 0.4,
     init: (W, H, tall) => {
       const g = tall ? 2 : rndInt(2, 3), groups = [];
       for (let i = 0; i < g; i++) groups.push({ size: chance(0.6) ? 2 : 3, x: (i + 0.5) / g + rnd(-0.04, 0.04), y: rnd(0.35, 0.65), flip: sign() });
@@ -445,8 +445,12 @@ function stepStory(morph) {
   const made = [];
   const slots = STORIES[story.name].layout(story.st, story.b, W, H);
   // Now and then someone turns to face the other way (or turns back), and stays turned.
+  // (in conversations people mostly look at each other: turning away is rarer, and doesn't last)
   let turned = null, slow = false;
-  if (morph && story.b > 0 && chance(0.14 + 0.3 * mood.F)) {
+  const def = STORIES[story.name];
+  if (morph && story.flips.size && def.flipBack && chance(def.flipBack)) {
+    turned = pick([...story.flips]); slow = chance(0.5); story.flips.delete(turned); // turning back
+  } else if (morph && story.b > 0 && chance((0.14 + 0.3 * mood.F) * (def.flipRate ?? 1))) {
     const can = slots.filter((sl) => sl.mirror === undefined);
     if (can.length) {
       turned = pick(can).id; slow = chance(0.5);
