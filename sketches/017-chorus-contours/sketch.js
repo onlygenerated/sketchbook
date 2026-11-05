@@ -33,6 +33,11 @@
 // procession leader (and the eldest, and the top of a rising column) walks off the screen before
 // leaving. Busy stories cap their contours.
 //
+// Sixth pass: a story lasts at most 8 beats. Backgrounds answer the beat in one of several ways
+// (whipping to the other side, pumping, cutting to new shapes, jumping in hue). No face has more
+// than 10 contours. Now and then someone turns to face the other way, in a snap or a slow turn,
+// and keeps facing that way while the story goes on.
+//
 // 016 notes:
 // Fork of 015 with a new composition and more life when the music is fast:
 //   - heads are whole and spread through the frame at different heights and sizes, their necks
@@ -391,7 +396,8 @@ function newStory(seed) {
   const home = storyCount++ % 3 === 0;
   const name = home ? 'faceoff' : weighted(names, names.map((n) => STORIES[n].weight * (tall ? (STORIES[n].tall ?? 1) : 1)));
   story = {
-    name, b: 0, phrase: weighted([8, 12, 16, 24], [20, 30, 32, 18]),
+    name, b: 0, phrase: weighted([4, 6, 8], [15, 30, 55]), // never more than 8 beats
+    flips: new Set(), // people who have turned to face the other way
     // Palette, after the original's: hue centered on red-magenta, rarely green.
     rootHue: wrapHue((sign() * skewed(0, 180, 1.25)) - 45),
     hueStep: sign() * skewed(4, 30, 1.5), unison: chance(0.1),
@@ -412,9 +418,20 @@ function stepStory(morph) {
   const old = cast ? cast.singers.filter((s) => s.life !== 'leave' && s.polys) : [];
   R = makeRng((Math.random() * 4294967296) >>> 0);
   const W = width, H = height;
-  const c = { arrangement: story.name, rootHue: story.rootHue, hueStep: story.hueStep, unison: story.unison, ring: story.ring, maxRings: STORIES[story.name].maxRings || 22, singers: [] };
+  const c = { arrangement: story.name, rootHue: story.rootHue, hueStep: story.hueStep, unison: story.unison, ring: story.ring, maxRings: Math.min(10, STORIES[story.name].maxRings || 10), singers: [] };
   const made = [];
-  STORIES[story.name].layout(story.st, story.b, W, H).forEach((sl, i) => {
+  const slots = STORIES[story.name].layout(story.st, story.b, W, H);
+  // Now and then someone turns to face the other way (or turns back), and stays turned.
+  let turned = null, slow = false;
+  if (morph && story.b > 0 && chance(0.14 + 0.3 * mood.F)) {
+    const can = slots.filter((sl) => sl.mirror === undefined);
+    if (can.length) {
+      turned = pick(can).id; slow = chance(0.5);
+      if (story.flips.has(turned)) story.flips.delete(turned); else story.flips.add(turned);
+    }
+  }
+  slots.forEach((sl, i) => {
+    if (story.flips.has(sl.id) && sl.mirror === undefined) sl.dir = -sl.dir;
     const s = makeSinger(c, sl.cx, sl.h, sl.dir, {
       head: sl.head || (sl.kind ? Profiles.make(R, sl.kind) : Profiles.make(R)),
       rot: sl.rot || 0, id: sl.id, storyName: story.name, slot: sl.slot ?? i % 7, alphaMul: sl.alpha ?? 1,
@@ -424,6 +441,7 @@ function stepStory(morph) {
     });
     // (a child is drawn smaller; an anchored face keeps its neck exactly on the waterline)
     s.y = s.yNow = sl.anchor ? sl.cy + 0.7 * sl.h - NECK_END * s.h : sl.cy - 0.6 * s.h;
+    if (sl.id === turned && slow) s.turn = { t: 0, T: rnd(0.5, 0.9) }; // a slow turn instead of a snap
     made.push(s);
     c.singers.push(s);
   });
@@ -449,7 +467,7 @@ function makeSinger(c, x, h, dir, extra = {}) {
   if (s.head.kind === 'child') s.h *= 0.82;
   s.x = x + dir * 0.43 * s.h; // placed by the middle of the head; s.x is the brow
   s.rowHue = new Float32Array(400);
-  s.rings = Math.max(4, Math.min(c.maxRings || 22, Math.round(0.75 / (c.ring.gap * s.gapMul)) + 1));
+  s.rings = Math.max(4, Math.min(c.maxRings || 10, Math.round(0.75 / (c.ring.gap * s.gapMul)) + 1));
   s.ready = new Array(s.rings).fill(true); // false while a strand is still on its way to that contour
   s.yNow = s.y; s.alphaNow = 0;
   return s;
@@ -474,6 +492,7 @@ function updateRoster(dt) {
     if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / lerp(0.7, 0.15, mood.F)); if (s.fade >= 1) s.life = 'live'; }
     const f = smooth01(s.fade);
     s.yNow = s.anchor ? s.y : s.y + (1 - f) * 0.35 * s.h - s.bob * 0.03 * s.h; // (anchored faces hold still)
+    if (s.turn && (s.turn.t += dt) >= s.turn.T) s.turn = null;
     s.alphaNow = s.alpha * f;
   }
 }
@@ -511,7 +530,10 @@ function newBackground() {
   const L = { pastel: [80, 87], 'very light': [87, 92], bright: [74, 81] }[lightStyle];
   const hue = anchor + sign() * rndInt(6, 18) * 10; // at least 60 degrees from the faces, so the lines stand out
   const p = {
-    pattern: weighted(['gradient', 'ribbons', 'circles', 'ripples'], [8, 42, 25, 25]),
+    pattern: weighted(['gradient', 'ribbons', 'circles', 'ripples'], [4, 44, 27, 25]),
+    // how it answers each beat: drift (shoved along), whip (swings to the other side), pump (swells
+    // toward you), cut (jumps to new shapes) or hue (jumps to a neighbouring color)
+    beatMode: weighted(['drift', 'whip', 'pump', 'cut', 'hue'], [22, 24, 22, 18, 14]),
     dark: false,
     hue1: hue, hue2: hue + sign() * rndInt(0, 3) * 10,
     sat: rnd(72, 100),
@@ -526,7 +548,7 @@ function newBackground() {
   bg.beatsLeft = rndInt(6, 20);
   R = saved;
   if (bg.cur) { bg.prev = bg.cur; bg.mix = 0; }
-  bg.cur = { p, elems, ripples: [], spawn: 0, t: Math.random() * 100, grad: null, gradKey: '' };
+  bg.cur = { p, elems, ripples: [], spawn: 0, t: Math.random() * 100, grad: null, gradKey: '', ph: 0, phT: 0, pump: 0, hue: 0, hueT: 0 };
   bg.params = p;
 }
 
@@ -558,9 +580,16 @@ function spawnRipples(b, n) {
 function bgBeat() {
   const b = bg.cur, F = mood.F;
   bg.flash = 1;
-  bg.kick = 0.6 + 2.4 * F;
-  if (b.p.pattern === 'ripples') spawnRipples(b, 1 + Math.round(4 * F));
-  else if (b.elems.length && F > 0.25) {
+  bg.kick = 1 + 3 * F;
+  const mode = b.p.beatMode;
+  if (mode === 'whip') b.phT += (chance(0.5) ? 1 : -1) * Math.PI * (0.6 + 0.6 * F);
+  else if (mode === 'pump') b.pump = 1;
+  else if (mode === 'hue') b.hueT += sign() * rnd(25, 60);
+  if (b.p.pattern === 'ripples') spawnRipples(b, (mode === 'cut' ? 4 : 1) + Math.round(4 * F));
+  else if (mode === 'cut') { // a hard cut: most of the shapes are somewhere new
+    const n = Math.round(b.elems.length * (0.5 + 0.5 * F));
+    for (let i = 0; i < n; i++) b.elems[Math.floor(Math.random() * b.elems.length)] = makeElem(b.p);
+  } else if (b.elems.length && F > 0.25) {
     const n = Math.round(b.elems.length * 0.5 * (F - 0.25));
     for (let i = 0; i < n; i++) b.elems[Math.floor(Math.random() * b.elems.length)] = makeElem(b.p);
   }
@@ -576,6 +605,9 @@ function drawBackground(ctx, dt) {
   for (const b of [bg.cur, bg.prev]) {
     if (!b) continue;
     b.t += dt * speed;
+    b.ph += (b.phT - b.ph) * 0.22;   // whip: swing toward the new side, fast
+    b.hue += (b.hueT - b.hue) * 0.25;
+    b.pump *= 0.84;
     if (b.p.pattern === 'ripples' && b === bg.cur && (b.spawn -= dt) <= 0) spawnRipples(b, 1);
   }
   drawBgLayer(ctx, bg.cur, 1, dt);
@@ -606,16 +638,20 @@ function drawBgLayer(ctx, b, alpha, dt) {
   ctx.drawImage(b.grad, 0, 0);
   ctx.restore();
   ctx.save();
-  const F = mood.F, t = b.t, pulse = 1 + bg.flash * (0.5 + 1.2 * F);
+  const F = mood.F, t = b.t, pulse = 1 + bg.flash * (0.8 + 1.6 * F), ph = b.ph, hs = b.hue;
+  if (b.pump > 0.01) { // pump: everything swells toward you on the beat
+    const z = 1 + b.pump * (0.06 + 0.12 * F);
+    ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+  }
   const reach = 0.4 + 2.2 * F; // how far things swing: a little when calm, wildly when frantic
   const band = (i) => (started ? bands[i] : 0.4);
   if (b.p.pattern === 'ribbons') {
     ctx.lineCap = 'butt';
     for (const e of b.elems) {
-      const x0 = (e.x0 + Math.sin(t * 0.5 * e.sp + e.ph * 2) * 0.05 * reach) * W;
+      const x0 = (e.x0 + Math.sin(t * 0.5 * e.sp + e.ph * 2 + ph * 0.5) * 0.05 * reach) * W;
       const x1 = x0 + e.dx * W;
-      const sway = (e.sway + Math.sin(t * e.sp + e.ph) * 0.14 * reach) * W, st = e.st * H;
-      ctx.strokeStyle = `hsla(${wrapHue(e.hue)} ${b.p.sat}% ${e.light}% / ${Math.min(0.9, e.alpha * pulse) * alpha})`;
+      const sway = (e.sway + Math.sin(t * e.sp + e.ph + ph) * 0.14 * reach) * W, st = e.st * H;
+      ctx.strokeStyle = `hsla(${wrapHue(e.hue + hs)} ${b.p.sat}% ${e.light}% / ${Math.min(0.9, e.alpha * pulse) * alpha})`;
       ctx.lineWidth = D * 0.004 * e.w * (0.5 + 1.3 * band(e.band));
       ctx.beginPath();
       ctx.moveTo(x0, -0.05 * H);
@@ -624,8 +660,8 @@ function drawBgLayer(ctx, b, alpha, dt) {
     }
   } else if (b.p.pattern === 'circles') {
     for (const e of b.elems) {
-      const x = (e.x + Math.sin(t * e.sp + e.ph) * 0.04 * reach) * W, y = (e.y + Math.cos(t * e.sp * 0.8 + e.ph) * 0.04 * reach) * H;
-      ctx.fillStyle = `hsla(${wrapHue(e.hue)} ${b.p.sat}% ${e.light}% / ${Math.min(0.9, e.alpha * pulse) * alpha})`;
+      const x = (e.x + Math.sin(t * e.sp + e.ph + ph) * 0.04 * reach) * W, y = (e.y + Math.cos(t * e.sp * 0.8 + e.ph + ph) * 0.04 * reach) * H;
+      ctx.fillStyle = `hsla(${wrapHue(e.hue + hs)} ${b.p.sat}% ${e.light}% / ${Math.min(0.9, e.alpha * pulse) * alpha})`;
       ctx.beginPath();
       ctx.arc(x, y, D * e.r * (0.75 + 0.6 * band(e.band) + 0.15 * bg.flash), 0, Math.PI * 2);
       ctx.fill();
@@ -635,7 +671,7 @@ function drawBgLayer(ctx, b, alpha, dt) {
       r.age += dt;
       const u = r.age / r.life;
       if (u >= 1) continue;
-      ctx.strokeStyle = `hsla(${wrapHue(r.hue)} ${b.p.sat}% ${r.light}% / ${r.alpha * Math.pow(1 - u, 1.5) * alpha})`;
+      ctx.strokeStyle = `hsla(${wrapHue(r.hue + hs)} ${b.p.sat}% ${r.light}% / ${r.alpha * Math.pow(1 - u, 1.5) * alpha})`;
       ctx.lineWidth = D * 0.002 * r.w * (1 - 0.6 * u);
       ctx.beginPath();
       ctx.arc(r.x * W, r.y * H, D * r.v * r.age * (1 + 0.3 * u), 0, Math.PI * 2);
@@ -901,7 +937,9 @@ function computeRings(s) {
   const hue = cast.rootHue + s.hueOffset;
   const h = s.h, dir = s.dir;
   const pv = singerPivot(s), ang = -dir * s.tilt * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
-  const ox = s.x - dir * Profiles.G * h + s.jx * h, oy = s.yNow + s.jy * h;
+  const cxs = s.x - dir * 0.43 * h + s.jx * h, oy = s.yNow + s.jy * h;
+  // a slow turn: the head narrows (as if seen from the front) and widens again facing the new way
+  const fx = s.turn ? dir * -Math.cos(Math.PI * smooth01(s.turn.t / s.turn.T)) : dir, g0 = Profiles.G - 0.43;
   // a story can turn a head right round (a ring of faces, a reflection), about its middle
   const rot = s.rot, cr = Math.cos(rot), sr = Math.sin(rot);
   const ccx = s.x - dir * 0.43 * h + s.jx * h, ccy = s.yNow + 0.6 * h + s.jy * h;
@@ -911,7 +949,7 @@ function computeRings(s) {
     const out = P.pts[k];
     for (let q = 0; q < NPTS; q++) {
       const hx = c[0] + (base[2 * q] - c[0]) * sc, hy = c[1] + (base[2 * q + 1] - c[1]) * sc;
-      const dx = ox + dir * h * hx - pv.x, dy = oy + h * hy - pv.y;
+      const dx = cxs + fx * h * (hx - g0) - pv.x, dy = oy + h * hy - pv.y;
       let X = pv.x + dx * ca - dy * sa, Y = pv.y + dx * sa + dy * ca;
       if (rot) { const ex = X - ccx, ey = Y - ccy; X = ccx + ex * cr - ey * sr; Y = ccy + ex * sr + ey * cr; }
       out[2 * q] = X;
