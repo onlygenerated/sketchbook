@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>012 Chorus (ensemble)</title>
+  <link rel="stylesheet" href="../../shared/shell.css">
+  <style>
+    /* The original drew a square canvas; center it in the window. */
+    body { display: grid; place-items: center; height: 100dvh; }
+
+    .picker {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      gap: 10px;
+      padding: 24px;
+      text-align: center;
+      font: 500 14px/1.5 ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      color: #f2efe8;
+      background: rgba(13, 13, 15, 0.35);
+      z-index: 5;
+    }
+    .picker[hidden] { display: none; }
+    .picker h1 {
+      margin: 0 0 6px;
+      font: italic 400 clamp(28px, 7vw, 44px)/1.05 Georgia, serif;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    }
+    .picker button, .picker label {
+      appearance: none;
+      font: inherit;
+      color: inherit;
+      background: rgba(13, 13, 15, 0.7);
+      border: 1px solid rgba(242, 239, 232, 0.4);
+      border-radius: 999px;
+      padding: 11px 20px;
+      cursor: pointer;
+      min-width: 240px;
+    }
+    .picker button:hover, .picker label:hover { border-color: #f2efe8; }
+    .picker button[hidden] { display: none; }
+    .picker-note { margin: 4px 0 0; min-height: 1.5em; opacity: 0.85; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
+
+    /* Frame-rate readout (fork of 003). Sits under the top bar, visible while animating. */
+    .fps-meter {
+      position: fixed;
+      top: calc(max(12px, env(safe-area-inset-top)) + 46px);
+      left: 12px;
+      z-index: 11;
+      pointer-events: none;
+      padding: 7px 12px 7px 26px;
+      border-radius: 10px;
+      background: rgba(13, 13, 15, 0.72);
+      backdrop-filter: blur(6px);
+      color: #f2efe8;
+      font: 500 12px/1.45 ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    .fps-meter[hidden] { display: none; }
+    .fps-meter b { font-size: 15px; }
+    .fps-meter span { opacity: 0.6; }
+    .fps-meter::before {
+      content: "";
+      position: absolute;
+      left: 11px;
+      top: 13px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #5bd18b;
+    }
+    .fps-meter[data-health="ok"]::before { background: #f2c14e; }
+    .fps-meter[data-health="slow"]::before { background: #ef5b5b; }
+
+    /* live: control panel, shown once a source is playing */
+    .live-panel {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 40px);
+      z-index: 11;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 14px;
+      margin: 0 auto;
+      max-width: 760px;
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: rgba(13, 13, 15, 0.72);
+      backdrop-filter: blur(6px);
+      color: #f2efe8;
+      font: 500 12px/1.4 ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      transition: opacity 0.4s ease;
+    }
+    .live-panel[hidden] { display: none; }
+    .live-panel b { font-weight: 600; }
+    .live-panel label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    .live-panel input[type="range"] { width: 140px; accent-color: #f2efe8; }
+    .live-panel input[type="checkbox"] { accent-color: #f2efe8; }
+    .live-panel select, .live-panel button {
+      font: inherit;
+      color: inherit;
+      background: rgba(242, 239, 232, 0.08);
+      border: 1px solid rgba(242, 239, 232, 0.3);
+      border-radius: 999px;
+      padding: 5px 11px;
+      cursor: pointer;
+      max-width: 220px;
+    }
+    .live-panel select option { color: #111; }
+    .live-panel .tabular { font-variant-numeric: tabular-nums; min-width: 4ch; }
+    /* sensitivity only applies to live sources; the song file plays as in the original */
+    .live-panel[data-kind="song"] .live-only { display: none; }
+    .keys { opacity: 0.6; }
+    body.not-wide .wide-only { display: none; }
+    #lowres-flag { padding: 2px 8px; border-radius: 999px; background: #f2c14e; color: #111; }
+    #lowres-flag[hidden] { display: none; }
+
+    /* Fade the panel with the rest of the overlay when idle */
+    body.idle .live-panel { opacity: 0; pointer-events: none; }
+
+    /* live: clean performance mode (fullscreen, or press H) hides every control and the cursor */
+    body.clean .shell, body.clean .fps-meter, body.clean .live-panel { display: none !important; }
+    body.clean, body.clean canvas { cursor: none; }
+    body.no-meter .fps-meter { display: none !important; }
+    .picker-help { margin: 0; max-width: 34ch; justify-self: center; opacity: 0.75; font-size: 12px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.4/lib/p5.min.js"></script>
+  <script src="../../shared/audio.js"></script>
+  <script src="../../shared/shell.js"></script>
+</head>
+<body>
+  <div class="picker" id="picker">
+    <h1>Chorus</h1>
+    <button type="button" id="use-laptop">use laptop audio</button>
+    <button type="button" id="play-local" hidden>play Guys Eyes</button>
+    <label>choose an audio file<input type="file" id="file" accept="audio/*" hidden></label>
+    <button type="button" id="use-mic">use microphone</button>
+    <p class="picker-note" id="picker-note"></p>
+    <p class="picker-help">Laptop audio follows whatever your laptop is playing (Chrome or Edge). The microphone option can also use Stereo Mix or a virtual audio cable.</p>
+  </div>
+
+  <div class="live-panel" id="live-panel" hidden>
+    <span>source: <b id="live-source"></b></span>
+    <select id="live-device" class="live-only" aria-label="Audio input" hidden></select>
+    <label class="sens">sensitivity <input type="range" id="live-sens" min="0" max="100" step="1"></label>
+    <span class="tabular" id="live-sens-value"></span>
+    <label><input type="checkbox" id="live-auto" checked> auto</label>
+    <span id="lowres-flag" hidden>low-res</span>
+    <button type="button" id="live-change">change source</button>
+    <button type="button" id="live-full">fullscreen</button>
+    <span class="keys">F fullscreen &middot; H hide &middot; M meter &middot; P low-res &middot; N new scene &middot; B new background &middot; Space pause</span>
+  </div>
+  <script src="sketch.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "title": "Chorus (ensemble)",
+  "date": "2026-11-04",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "Chorus with a living ensemble: faces join and leave as the music changes, hair is back with many finer strands, scenes change often, and the background shifts on its own.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 011-chorus-bare"
+}
