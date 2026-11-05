@@ -394,7 +394,10 @@ function newStory(seed) {
   const names = Object.keys(STORIES);
   // Home: every third story is the simplest one, two people face to face.
   const home = storyCount++ % 3 === 0;
-  const name = home ? 'faceoff' : weighted(names, names.map((n) => STORIES[n].weight * (tall ? (STORIES[n].tall ?? 1) : 1)));
+  // (never the same story twice in a row, which would look like one long scene)
+  const last = story ? story.name : '';
+  const name = home && last !== 'faceoff' ? 'faceoff'
+    : weighted(names, names.map((n) => (n === last ? 0 : STORIES[n].weight * (tall ? (STORIES[n].tall ?? 1) : 1))));
   story = {
     name, b: 0, phrase: weighted([4, 6, 8], [15, 30, 55]), // never more than 8 beats
     flips: new Set(), // people who have turned to face the other way
@@ -789,7 +792,7 @@ function onBeat() {
   const F = mood.F;
   bgBeat();
   // Every beat the story takes a step and every face is drawn anew.
-  if (story.b >= story.phrase * (1 - 0.3 * F)) newStory();
+  if (story.b >= Math.min(8, story.phrase * (1 - 0.3 * F))) newStory(); // a story never outlasts 8 beats
   stepStory(true);
   for (const s of cast.singers) {
     s.punch = Math.max(s.punch, 0.5 + 0.5 * F); // the contours jump apart
