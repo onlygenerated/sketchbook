@@ -5,6 +5,17 @@
 // is now closed at the hairline, so the rings no longer have a gap above the forehead.
 // This is the base for developing the contour style further.
 //
+// Wilder (second pass):
+//   - a "wild" slider in the live panel scales how frantic everything gets (mood.F is the result)
+//   - the background ranges from a slow drift to racing (about 60 times faster), lurches on every
+//     beat, and in frantic music throws ribbons and circles somewhere new; their widths follow
+//     the bands; a new "ripples" background spawns rings on the beat
+//   - contour spacing varies by scene (from tight to wide, even, clustered or spreading), the rings
+//     spread apart on loud notes and jump apart on the beat, and they can converge on the ear,
+//     mouth, eye or skull
+//   - heads join and leave on the beat, pop in and out when the music is fast, and in frantic
+//     passages flip direction and jolt
+//
 // 016 notes:
 // Fork of 015 with a new composition and more life when the music is fast:
 //   - heads are whole and spread through the frame at different heights and sizes, their necks
@@ -96,9 +107,11 @@ let started = false;      // a source has been chosen
 let clock = 0;            // seconds of animation (stops while paused)
 let bands = new Array(12).fill(0);
 let bassAbs = 0;
+let rosterWant = 0, rosterAny = false, rosterWaited = 0; // a roster change waiting for the next beat
+let wild = 1.5;           // the wild slider: scales the frenzy (0 calm, 1 as the music says, 2.5 unhinged)
 let rosterCool = 0;       // seconds until the ensemble can grow or shrink again
 
-const mood = { fast: null, slow: null, swell: 0, swellSlow: 0, tilt: 0, hush: 0, hushWas: 0, level: 0, n: 0, beats: [], frenzy: 0 };
+const mood = { fast: null, slow: null, swell: 0, swellSlow: 0, tilt: 0, hush: 0, hushWas: 0, level: 0, n: 0, beats: [], frenzy: 0, F: 0 };
 const beat = { avg: 0, last: 0, accent: 0 };
 // Changes in the sound itself: the spectrum's shape (novelty) and its brightness (centroid).
 const change = { short: null, long: null, novelty: 0, cool: 6, majorCool: 15, centFast: null, centSlow: null, bgCool: 4 };
@@ -126,6 +139,13 @@ function newCast(seed) {
   c.hueStep = sign() * skewed(4, 30, 1.5);
   c.unison = chance(0.1);
   c.lineStyle = 'echo'; // the only style in this sketch
+  // Contour spacing for the scene: from tight (20 rings) to wide (4), evenly spaced, clustered at
+  // the outline or spreading out, converging on one point of the head.
+  c.ring = {
+    gap: weighted([0.035, 0.055, 0.08, 0.11, 0.15, 0.2], [12, 18, 22, 20, 16, 12]) * rnd(0.85, 1.15),
+    curve: weighted([1, 0.55, 1.8], [45, 30, 25]),
+    center: weighted(['ear', 'mouth', 'eye', 'skull'], [45, 20, 20, 15]),
+  };
   c.minN = c.arrangement === 'duet' ? 2 : 1;
   c.maxN = tall ? 4 : c.arrangement === 'scatter' ? 9 : 7;
 
@@ -196,6 +216,7 @@ function makeSinger(c, x, h, dir, extra = {}) {
     slot: rndInt(0, 6), hueOffset: 0, join: chance(0.3) ? rnd(0.15, 0.55) : 0, silent: false,
     tiltGain: rnd(0.6, 1.25), baseTilt: rnd(-3, 3), alpha: 1, band: 0,
     e: 0, avg: 0.2, open: 0, eye: 0, tilt: 0, fade: 0, life: 'enter', vib: 0, bob: 0, vph: rnd(0, 6.28),
+    gapMul: rnd(0.75, 1.35), punch: 0, jx: 0, jy: 0,
     ...extra,
   };
   const kind = s.head.kind;
@@ -257,6 +278,7 @@ function addSinger() {
   }
   const r = makeRng((Math.random() * 4294967296) >>> 0);
   fillRowHues(s, r);
+  s.punch = 1;
   c.singers.push(s);
   finishRoster(c);
   return true;
@@ -286,8 +308,9 @@ function removeSinger() {
 function updateRoster(dt) {
   const c = cast;
   for (const s of c.singers) {
-    if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / 0.7); if (s.fade >= 1) s.life = 'live'; }
-    else if (s.life === 'leave') s.fade -= dt / 0.7;
+    const ft = lerp(0.7, 0.08, mood.F); // fast music: heads pop in and out
+    if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / ft); if (s.fade >= 1) s.life = 'live'; }
+    else if (s.life === 'leave') s.fade -= dt / ft;
   }
   if (c.singers.some((s) => s.life === 'leave' && s.fade <= 0)) {
     c.singers = c.singers.filter((s) => !(s.life === 'leave' && s.fade <= 0));
@@ -298,16 +321,35 @@ function updateRoster(dt) {
     s.alphaNow = s.alpha * f;
   }
   rosterCool -= dt;
-  if (!started || rosterCool > 0) return;
+  if (!started) return;
+  if (rosterWant) { // waiting for a beat; if none comes, go ahead anyway
+    rosterWaited += dt;
+    if (rosterWaited > 2.5) doRoster();
+    return;
+  }
+  if (rosterCool > 0) return;
   const live = c.singers.filter((s) => s.life !== 'leave').length;
-  const target = Math.max(c.minN, Math.min(c.maxN, Math.round(c.baseCount + mood.swellSlow * 2.5)));
-  if (live < target ? addSinger() : live > target ? removeSinger() : false) rosterCool = rnd(1.5, 3) * (1 - 0.6 * mood.frenzy);
+  const target = rosterTarget();
+  if (live !== target) { rosterWant = live < target ? 1 : -1; rosterAny = false; rosterWaited = 0; }
 }
 
-// A noticeable change in the sound: someone joins or someone leaves.
+function rosterTarget() {
+  const c = cast;
+  return Math.max(c.minN, Math.min(c.maxN, Math.round(c.baseCount + mood.swellSlow * 2.5)));
+}
+
+// Carry out the waiting change (on a beat, usually).
+function doRoster() {
+  const ok = rosterWant > 0 ? addSinger() || (rosterAny && removeSinger()) : removeSinger() || (rosterAny && addSinger());
+  rosterWant = 0;
+  if (ok) rosterCool = rnd(1.5, 3) * (1 - 0.7 * mood.F);
+  return ok;
+}
+
+// A noticeable change in the sound: someone joins or someone leaves, on the next beat.
 function onMusicChange() {
   const grow = mood.swell > 0.2 ? 0.75 : mood.swell < -0.2 ? 0.25 : 0.5;
-  if (Math.random() < grow ? addSinger() || removeSinger() : removeSinger() || addSinger()) rosterCool = rnd(1.5, 3) * (1 - 0.6 * mood.frenzy);
+  rosterWant = Math.random() < grow ? 1 : -1; rosterAny = true; rosterWaited = 0;
 }
 
 // Re-rolled on every beat: each row's color.
@@ -325,9 +367,9 @@ function newDetail() {
 // ---------------------------------------------------------------------------------------------------
 // Background: changes on its own, cross-fading from the old one
 // ---------------------------------------------------------------------------------------------------
-const bg = { params: null, cur: null, prev: null, mix: 1, beatsLeft: 12, flash: 0, key: '' };
+const bg = { params: null, cur: null, prev: null, mix: 1, beatsLeft: 12, flash: 0, kick: 0, key: '' };
 
-// A background: a gradient (painted once) plus ribbons or circles that move every frame.
+// A background: a gradient (painted once) plus ribbons, circles or ripples that move every frame.
 function newBackground() {
   const saved = R;
   R = makeRng((Math.random() * 4294967296) >>> 0);
@@ -338,54 +380,82 @@ function newBackground() {
   const L = { pastel: [80, 87], 'very light': [87, 92], bright: [74, 81] }[lightStyle];
   const hue = anchor + sign() * rndInt(6, 18) * 10; // at least 60 degrees from the faces, so the lines stand out
   const p = {
-    pattern: weighted(['gradient', 'ribbons', 'circles'], [15, 55, 30]),
+    pattern: weighted(['gradient', 'ribbons', 'circles', 'ripples'], [8, 42, 25, 25]),
     dark: false,
     hue1: hue, hue2: hue + sign() * rndInt(0, 3) * 10,
     sat: rnd(72, 100),
     light1: rnd(L[0], L[1]), light2: rnd(L[0], L[1]),
     strokeHue: chance(0.5) ? hue + 30 : anchor,
   };
+  p.amax = { ribbons: rnd(0.12, 0.5), circles: rnd(0.14, 0.3), ripples: rnd(0.3, 0.6), gradient: 0 }[p.pattern];
   // The moving parts, laid out in fractions of the screen so they survive a resize.
   const elems = [];
-  if (p.pattern === 'ribbons') {
-    const n = rndInt(16, 45), amax = p.dark ? rnd(0.05, 0.2) : rnd(0.12, 0.5);
-    for (let i = 0; i < n; i++) elems.push({
-      x0: rnd(-0.1, 1.1), dx: rnd(-0.5, 0.5), sway: rnd(-0.3, 0.3), st: rnd(0.05, 0.35),
-      hue: p.strokeHue + rndInt(-10, 10) * 6, light: rnd(68, 97), alpha: skewed(0.01, amax, 2), w: rnd(0.5, 40),
-      ph: rnd(0, 6.28), sp: rnd(0.4, 1.6),
-    });
-  } else if (p.pattern === 'circles') {
-    const n = rndInt(30, 80), amax = p.dark ? 0.07 : rnd(0.14, 0.3);
-    for (let i = 0; i < n; i++) {
-      const sg = sign();
-      elems.push({
-        x: 0.5 + sg * skewed(0, 0.55, 1), y: 0.55 + sign() * skewed(0, 0.5, 2), r: 0.025 * skewed(3, 16, 2),
-        hue: p.strokeHue + sg * skewed(0, 20, 2.5) * 8, light: rnd(68, 97), alpha: skewed(0.001, amax, 2),
-        ph: rnd(0, 6.28), sp: rnd(0.4, 1.6),
-      });
-    }
-  }
+  const n = p.pattern === 'ribbons' ? rndInt(16, 45) : p.pattern === 'circles' ? rndInt(30, 80) : 0;
+  for (let i = 0; i < n; i++) elems.push(makeElem(p));
   bg.beatsLeft = rndInt(6, 20);
   R = saved;
   if (bg.cur) { bg.prev = bg.cur; bg.mix = 0; }
-  bg.cur = { p, elems, t: Math.random() * 100, grad: null, gradKey: '' };
+  bg.cur = { p, elems, ripples: [], spawn: 0, t: Math.random() * 100, grad: null, gradKey: '' };
   bg.params = p;
 }
 
+function makeElem(p) {
+  if (p.pattern === 'ribbons') return {
+    x0: rnd(-0.1, 1.1), dx: rnd(-0.5, 0.5), sway: rnd(-0.3, 0.3), st: rnd(0.05, 0.35),
+    hue: p.strokeHue + rndInt(-10, 10) * 6, light: rnd(68, 97), alpha: skewed(0.01, p.amax, 2), w: rnd(0.5, 40),
+    ph: rnd(0, 6.28), sp: rnd(0.4, 1.6), band: rndInt(0, 11),
+  };
+  const sg = sign();
+  return {
+    x: 0.5 + sg * skewed(0, 0.55, 1), y: 0.55 + sign() * skewed(0, 0.5, 2), r: 0.025 * skewed(3, 16, 2),
+    hue: p.strokeHue + sg * skewed(0, 20, 2.5) * 8, light: rnd(68, 97), alpha: skewed(0.001, p.amax, 2),
+    ph: rnd(0, 6.28), sp: rnd(0.4, 1.6), band: rndInt(0, 11),
+  };
+}
+
+function spawnRipples(b, n) {
+  for (let i = 0; i < n; i++) b.ripples.push({
+    x: rnd(0, 1), y: rnd(0, 1), age: 0, life: rnd(1.2, 3.5), v: rnd(0.15, 0.5) * (1 + 2 * mood.F),
+    hue: b.p.strokeHue + rndInt(-10, 10) * 6, light: rnd(68, 97), w: rnd(1, 14), alpha: rnd(0.4, 1) * b.p.amax,
+  });
+  if (b.ripples.length > 60) b.ripples.splice(0, b.ripples.length - 60);
+  b.spawn = rnd(0.8, 2);
+}
+
+// On a beat the background answers: it lurches forward, ripples spawn, and in frantic music some
+// ribbons or circles are thrown somewhere new.
+function bgBeat() {
+  const b = bg.cur, F = mood.F;
+  bg.flash = 1;
+  bg.kick = 0.6 + 2.4 * F;
+  if (b.p.pattern === 'ripples') spawnRipples(b, 1 + Math.round(4 * F));
+  else if (b.elems.length && F > 0.25) {
+    const n = Math.round(b.elems.length * 0.5 * (F - 0.25));
+    for (let i = 0; i < n; i++) b.elems[Math.floor(Math.random() * b.elems.length)] = makeElem(b.p);
+  }
+  if (F > 0.55 && chance(0.35)) b.t += rnd(1, 3);
+}
+
 function drawBackground(ctx, dt) {
-  const speed = 0.15 + 1.3 * mood.frenzy; // the background drifts faster as the music speeds up
-  bg.cur.t += dt * speed;
-  if (bg.prev) bg.prev.t += dt * speed;
+  const F = mood.F;
+  // Calm music barely drifts; frantic music races, with a shove on every beat.
+  const speed = 0.06 + 0.6 * F + 3.5 * F * F + 3 * bg.kick;
+  bg.kick *= 0.86;
   bg.flash *= 0.88;
-  drawBgLayer(ctx, bg.cur, 1);
+  for (const b of [bg.cur, bg.prev]) {
+    if (!b) continue;
+    b.t += dt * speed;
+    if (b.p.pattern === 'ripples' && b === bg.cur && (b.spawn -= dt) <= 0) spawnRipples(b, 1);
+  }
+  drawBgLayer(ctx, bg.cur, 1, dt);
   if (bg.prev && bg.mix < 1) {
     bg.mix = Math.min(1, bg.mix + dt / 1.2);
-    drawBgLayer(ctx, bg.prev, 1 - smooth01(bg.mix));
+    drawBgLayer(ctx, bg.prev, 1 - smooth01(bg.mix), dt);
     if (bg.mix >= 1) bg.prev = null;
   }
 }
 
-function drawBgLayer(ctx, b, alpha) {
+function drawBgLayer(ctx, b, alpha, dt) {
   const dpr = pixelDensity(), W = width, H = height, D = Math.min(W, H);
   const key = `${W}x${H}@${dpr}`;
   if (b.gradKey !== key) {
@@ -405,15 +475,17 @@ function drawBgLayer(ctx, b, alpha) {
   ctx.drawImage(b.grad, 0, 0);
   ctx.restore();
   ctx.save();
-  const t = b.t, pulse = 1 + bg.flash * (0.5 + 1.2 * mood.frenzy);
+  const F = mood.F, t = b.t, pulse = 1 + bg.flash * (0.5 + 1.2 * F);
+  const reach = 0.4 + 2.2 * F; // how far things swing: a little when calm, wildly when frantic
+  const band = (i) => (started ? bands[i] : 0.4);
   if (b.p.pattern === 'ribbons') {
     ctx.lineCap = 'butt';
     for (const e of b.elems) {
-      const x0 = (e.x0 + Math.sin(t * 0.5 * e.sp + e.ph * 2) * 0.05) * W;
+      const x0 = (e.x0 + Math.sin(t * 0.5 * e.sp + e.ph * 2) * 0.05 * reach) * W;
       const x1 = x0 + e.dx * W;
-      const sway = (e.sway + Math.sin(t * e.sp + e.ph) * 0.14) * W, st = e.st * H;
+      const sway = (e.sway + Math.sin(t * e.sp + e.ph) * 0.14 * reach) * W, st = e.st * H;
       ctx.strokeStyle = `hsla(${wrapHue(e.hue)} ${b.p.sat}% ${e.light}% / ${Math.min(0.9, e.alpha * pulse) * alpha})`;
-      ctx.lineWidth = D * 0.004 * e.w;
+      ctx.lineWidth = D * 0.004 * e.w * (0.5 + 1.3 * band(e.band));
       ctx.beginPath();
       ctx.moveTo(x0, -0.05 * H);
       ctx.bezierCurveTo(x0 + sway, st, x1 - sway, H - st, x1, H * 1.05);
@@ -421,12 +493,24 @@ function drawBgLayer(ctx, b, alpha) {
     }
   } else if (b.p.pattern === 'circles') {
     for (const e of b.elems) {
-      const x = (e.x + Math.sin(t * e.sp + e.ph) * 0.04) * W, y = (e.y + Math.cos(t * e.sp * 0.8 + e.ph) * 0.04) * H;
+      const x = (e.x + Math.sin(t * e.sp + e.ph) * 0.04 * reach) * W, y = (e.y + Math.cos(t * e.sp * 0.8 + e.ph) * 0.04 * reach) * H;
       ctx.fillStyle = `hsla(${wrapHue(e.hue)} ${b.p.sat}% ${e.light}% / ${Math.min(0.9, e.alpha * pulse) * alpha})`;
       ctx.beginPath();
-      ctx.arc(x, y, D * e.r * (1 + 0.12 * mood.level + 0.15 * bg.flash), 0, Math.PI * 2);
+      ctx.arc(x, y, D * e.r * (0.75 + 0.6 * band(e.band) + 0.15 * bg.flash), 0, Math.PI * 2);
       ctx.fill();
     }
+  } else if (b.p.pattern === 'ripples') {
+    for (const r of b.ripples) {
+      r.age += dt;
+      const u = r.age / r.life;
+      if (u >= 1) continue;
+      ctx.strokeStyle = `hsla(${wrapHue(r.hue)} ${b.p.sat}% ${r.light}% / ${r.alpha * Math.pow(1 - u, 1.5) * alpha})`;
+      ctx.lineWidth = D * 0.002 * r.w * (1 - 0.6 * u);
+      ctx.beginPath();
+      ctx.arc(r.x * W, r.y * H, D * r.v * r.age * (1 + 0.3 * u), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    b.ripples = b.ripples.filter((r) => r.age < r.life);
   }
   ctx.restore();
 }
@@ -505,6 +589,7 @@ function listen(dt) {
   const bps = mood.beats.length / 4;
   const fz = clamp01((bps - 0.5) / 1.3) * (0.4 + 0.6 * clamp01(lvl * 1.8));
   mood.frenzy += (fz - mood.frenzy) * (fz > mood.frenzy ? 0.05 : 0.015);
+  mood.F = clamp01(mood.frenzy * wild + Math.max(0, wild - 1) * 0.2); // what everything else reacts to
   beat.accent *= 0.9;
 
   for (const s of cast.singers) {
@@ -525,19 +610,41 @@ function listen(dt) {
     const vt = clamp01((rel - 0.6) / 0.8) * (1 - mood.hush);
     s.vib += (vt - s.vib) * (vt > s.vib ? 0.5 : 0.15);
     s.bob *= 0.86;
+    s.punch *= 0.82;
+    s.jx *= 0.8; s.jy *= 0.8;
     const bow = singing ? 0 : -4;
     s.tilt += ((mood.tilt + bow) * s.tiltGain + s.baseTilt - s.tilt) * 0.1;
   }
 }
 
 function onBeat() {
+  const F = mood.F;
   newDetail();
-  bg.flash = 1;
-  if (mood.frenzy > 0.15) for (const s of cast.singers) s.bob = Math.max(s.bob, 0.4 + 0.6 * mood.frenzy);
-  if (mood.frenzy > 0.55 && chance(0.35)) bg.cur.t += rnd(1, 3); // in frantic passages the background lurches
-  bg.beatsLeft -= 1 + mood.frenzy; // frantic music changes the backdrop sooner
+  bgBeat();
+  for (const s of cast.singers) {
+    s.punch = Math.max(s.punch, 0.5 + 0.5 * F); // the contours jump apart
+    if (F > 0.15) s.bob = Math.max(s.bob, 0.4 + 0.6 * F);
+    if (F > 0.45) { // frantic: heads jolt, and now and then one turns to face the other way
+      s.jx = rnd(-1, 1) * 0.07 * F; s.jy = rnd(-1, 1) * 0.05 * F;
+      if (!s.soloist && cast.arrangement !== 'duet' && chance(0.1 * F)) {
+        const cx = s.x - s.dir * 0.43 * s.h;
+        s.dir = -s.dir; s.x = cx + s.dir * 0.43 * s.h;
+      }
+    }
+  }
+  // Heads join and leave on the beat: a waiting change happens now, and the faster the music the
+  // more often someone pops in or out (sometimes both at once).
+  if (rosterWant) doRoster();
+  else if (started && rosterCool <= 0.5 && chance(0.05 + 0.5 * F)) {
+    const live = cast.singers.filter((s) => s.life !== 'leave').length, target = rosterTarget();
+    rosterWant = chance(live < target ? 0.75 : live > target ? 0.25 : 0.5) ? 1 : -1; rosterAny = true;
+    const dir = rosterWant;
+    if (doRoster() && F > 0.6 && chance(F - 0.3)) { rosterWant = -dir; rosterAny = false; doRoster(); }
+    rosterCool = Math.min(rosterCool, 0.3);
+  }
+  bg.beatsLeft -= 1 + mood.F; // frantic music changes the backdrop sooner
   if (bg.beatsLeft <= 0) newBackground();
-  if (++beatsInPhrase >= cast.phraseLen * (1 - 0.5 * mood.frenzy)) {
+  if (++beatsInPhrase >= cast.phraseLen * (1 - 0.5 * mood.F)) {
     if (chance(0.75)) newCast(); // a new arrangement; the background keeps its own timing
     else beatsInPhrase = 0;
   }
@@ -591,6 +698,7 @@ function idleListen() {
     s.tilt += (s.baseTilt + 3 * Math.sin(t * 0.3) - s.tilt) * 0.05;
   }
   mood.level = 0.3;
+  mood.F = 0.15;
 }
 
 // Where a singer's head is drawn: the brow sits at s.x, the crown at s.yNow. The head tilts about
@@ -611,7 +719,7 @@ function drawSinger(ctx, s) {
   ctx.translate(pv.x, pv.y);
   ctx.rotate(-dir * s.tilt * Math.PI / 180);
   ctx.translate(-pv.x, -pv.y);
-  ctx.translate(s.x - dir * Profiles.G * h, s.yNow);
+  ctx.translate(s.x - dir * Profiles.G * h + s.jx * h, s.yNow + s.jy * h);
   ctx.scale(dir * h, h);
   ctx.globalAlpha = s.alphaNow;
   const px = 1 / h; // one screen pixel, in head units
@@ -620,18 +728,26 @@ function drawSinger(ctx, s) {
   ctx.restore();
 }
 
-// Echo: the outline repeated, shrinking toward the ear, like ripples. The rings stop where the neck
-// fades out, and wobble with the singer's band.
+// Echo: the outline repeated, shrinking toward one point of the head, like ripples. The scene sets
+// the spacing; the rings spread apart on loud notes, jump apart on the beat, and wobble with the
+// singer's band. They stop where the neck fades out.
 function drawEcho(ctx, s, shp, px, hue) {
-  const c = [shp.marks.ear.x, shp.marks.ear.y];
-  const rings = 7;
+  const ring = cast.ring, F = mood.F, m = shp.marks;
+  const c = ring.center === 'mouth' ? [m.mouth.x, m.mouth.y] : ring.center === 'eye' ? [m.eye.x, m.eye.y]
+    : ring.center === 'skull' ? [shp.skull.cx, shp.skull.cy] : [m.ear.x, m.ear.y];
+  const gap = ring.gap * s.gapMul;
+  const rings = Math.max(4, Math.min(22, Math.round(0.75 / gap) + 1));
+  const span = Math.min(0.97, Math.min(0.8, gap * (rings - 1)) * (1 + 0.35 * s.e * (0.3 + F) + 0.5 * s.punch * (0.3 + F)));
   const omega = 2.2 + s.band * 1.6;
+  const wob = 0.02 * s.vib * (0.4 + 2.5 * F);
+  const thin = Math.sqrt(Math.min(1, 7 / rings)); // many rings: finer lines
   ctx.lineJoin = 'round';
   for (let k = rings - 1; k >= 0; k--) {
-    const sc = 1 - k * 0.11 + Math.sin(clock * omega + k * 0.9 + s.vph) * 0.02 * s.vib * (0.4 + 2 * mood.frenzy);
+    const u = k / (rings - 1);
+    const sc = 1 - span * Math.pow(u, ring.curve) + Math.sin(clock * omega + k * 0.9 + s.vph) * wob;
     const rgb = hsbRgb(hue + s.rowHue[k] * 1.5, 85, 92);
-    ctx.lineWidth = px * (k === 0 ? 3.2 : 2.2 - k * 0.18) * (1 + s.e * 0.6);
-    ctx.strokeStyle = rgba(rgb, k === 0 ? 1 : 0.85 - k * 0.09);
+    ctx.lineWidth = px * (k === 0 ? 3.2 : (2.2 - u * 1.1) * thin) * (1 + s.e * 0.6);
+    ctx.strokeStyle = rgba(rgb, k === 0 ? 1 : 0.85 - u * 0.55);
     ctx.beginPath();
     let pen = false, first = null;
     for (const p of shp.outline) {
@@ -684,6 +800,10 @@ function setupSourcePicker() {
   setInterval(() => { if (!panel.hidden) refresh(); }, 250);
   sens.addEventListener('input', () => { Mic.autoLevel = false; Mic.setGain(fromSlider(+sens.value)); refresh(); });
   auto.addEventListener('change', () => { Mic.autoLevel = auto.checked; Mic.resetAutoLevel(); });
+  const wildEl = document.getElementById('live-wild'), wildValue = document.getElementById('live-wild-value');
+  const showWild = () => { wildValue.textContent = '×' + wild.toFixed(1); };
+  wildEl.addEventListener('input', () => { wild = +wildEl.value / 100; showWild(); });
+  showWild();
 
   const started_ = (label) => {
     started = true;

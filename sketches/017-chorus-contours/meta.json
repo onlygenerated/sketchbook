@@ -1,9 +1,14 @@
 {
   "title": "Chorus contours",
   "date": "2026-11-05",
-  "tags": ["generative", "audio-reactive", "portrait", "live"],
-  "description": "016 with only the contour style: each face is its outline repeated in shrinking rings, on bright pastel backgrounds.",
-  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+  "tags": [
+    "generative",
+    "audio-reactive",
+    "portrait",
+    "live"
+  ],
+  "description": "Faces drawn only as contours (the outline repeated in shrinking rings) on bright pastel backgrounds. Fast music makes it frantic: the background races and lurches on the beat, the rings jump apart, and heads pop in and out on the beat. A wild slider sets how far it goes.",
+  "interaction": "use laptop audio, a song or the mic  ·  wild slider  ·  N new scene  ·  B new background  ·  tap to pause",
   "status": "wip",
   "original": "fork of 016-chorus-frenetic"
 }
