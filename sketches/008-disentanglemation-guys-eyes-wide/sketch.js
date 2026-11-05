@@ -1,7 +1,7 @@
 // =====================================================================================================
 // Disentanglemation: Guys Eyes (wide)
 // Fork of sketch 007 that fills any screen shape (changes marked "wide:"). The faces stay on a
-// centered square "stage" sized to the shorter side of the window; the face lines and the
+// centered square "stage" sized to the shorter side of the window; the face lines, hair and
 // background extend to the screen edges, and "spread" pushes the faces apart (fixed, or moving
 // with the music). In a square window it draws exactly what 007 draws. P toggles low-res mode.
 //
@@ -1034,10 +1034,104 @@ function drawFace(regX, regY, imageDim) {
     knotOffsets.push(range(-(attachedDistanceMin - faceDistance), attachedDistanceMin - faceDistance) * imageDim * 1.5); // each knot will be located somewhere random between the two faces
   }
 
+
+  // wide: extra hair strands beyond the square, so the hair runs all the way to the screen edges
+  // behind each head. Real strands are one per face row (a row's height becomes its strand's x), so
+  // the extras continue that spacing outward with the same shapes, sweep and hair style. They use
+  // their own random stream, so the original's random choices (and the square window) are untouched,
+  // and they layer the way the original's drawing order would continue: on the outer left, strands
+  // go mostly under the face lines; on the outer right, mostly over.
+  const extraHair = faceLines && drawHair;
+  let hairSeed = (parseInt(tokenData.hash.slice(34, 42), 16) ^ (numLines * 7919)) || 1;
+  const withHairRng = (fn) => { const saved = seed; seed = hairSeed; fn(); hairSeed = seed; seed = saved; };
+
+  // An approximation of a row's connecting-line color (the real strands take theirs from their row).
+  const extraWeaveBase = () => {
+    switch (colorBlendStyle) {
+      case 0: return lerpColor(leftBaseColor, rightBaseColor, 0.5);
+      case 1: case 3: return leftBaseColor;
+      case 2: case 4: return rightBaseColor;
+      case 6: { const c = rnd() < 0.5 ? leftBaseColor : rightBaseColor; return color(hue(c), range(20, 50), brightness(c)); }
+      default: { const c = rnd() < 0.5 ? leftBaseColor : rightBaseColor;
+        return color(hue(c) + (rnd() < 0.5 ? -1 : 1) * range(3, 18) * !monochromatic, saturation(c), brightness(c)); }
+    }
+  };
+
+  // Same as the strand code in the row loop below, for a strand at strip position stripY.
+  const drawExtraStrand = (stripY, isLeft) => {
+    colorMode(HSB);
+    const wc = extraWeaveBase();
+    const curAlpha = generateUnlabeledVariable(0.4, 1.0, 1); // hair never appears with blend style 7
+    const curWeaveColor = color(hue(wc) + (range(-hueDifference, hueDifference) * !monochromatic), saturation(wc), brightness(wc), curAlpha);
+    const curShadowColor = color(hue(shadowColor), saturation(shadowColor), brightness(shadowColor), alpha(shadowColor) * curAlpha);
+    const curWeaveWidth = imageDim * (weaveWidth + ((weaveWidth) * range(-0.40 * weaveVariation, 3 * weaveVariation)));
+    const curSideX = Math.round(stripY + (spacing / 4));
+    let bTX, bTY, bSX, bSY, eSX, eSY, eTX, eTY;
+    if (isLeft) {
+      const top = range(leftHairChaos * spacing * leftHairStretchAdjust, spacing * leftHairStretchAdjust);
+      const bottom = range(-spacing * leftHairStretchAdjust, leftHairChaos * spacing * leftHairStretchAdjust);
+      bTX = curSideX - (imageDim * 0.10);
+      bTY = -imageDim * 0.02;
+      bSX = curSideX + top - (imageDim * 0.10);
+      bSY = leftHairLength * imageDim * 0.25 - (imageDim * 0.001);
+      eSX = curSideX + bottom - (leftHairSweep * imageDim) - (imageDim * 0.10);
+      eSY = leftHairLength * imageDim * 0.75;
+      eTX = curSideX - (leftHairSweep * imageDim) - (imageDim * 0.10);
+      eTY = leftHairLength * imageDim + range(leftHairLength * leftHairChaos * -0.15 * imageDim, leftHairLength * 0.15 * imageDim);
+    } else {
+      const top = range(-spacing * rightHairStretchAdjust, rightHairChaos * spacing * rightHairStretchAdjust);
+      const bottom = range(rightHairChaos * spacing * rightHairStretchAdjust, spacing * rightHairStretchAdjust);
+      bTX = curSideX + (imageDim * 0.10);
+      bTY = -imageDim * 0.02;
+      bSX = curSideX + top + (imageDim * 0.10);
+      bSY = rightHairLength * imageDim * 0.25 - (imageDim * 0.001);
+      eSX = curSideX + bottom + (rightHairSweep * imageDim) + (imageDim * 0.10);
+      eSY = rightHairLength * imageDim * 0.75;
+      eTX = curSideX + (rightHairSweep * imageDim) + (imageDim * 0.10);
+      eTY = rightHairLength * imageDim + range(rightHairLength * rightHairChaos * -0.15 * imageDim, rightHairLength * 0.15 * imageDim);
+    }
+    const shift = isLeft ? -spreadPx : spreadPx;
+    bTX += shift; bSX += shift; eSX += shift; eTX += shift;
+
+    const ctx = drawingContext;
+    ctx.save();
+    strokeWeight(curWeaveWidth);
+    stroke(curShadowColor);
+    strokeCap(SQUARE);
+    noFill();
+    if ((isLeft && leftFlipped) || (!isLeft && rightFlipped)) applyMatrix(1, 0, 0, -1, 0, imageDim);
+    fastBezier(bTX + (spacing / 16), bTY, bSX + (spacing / 16), bSY, eSX + (spacing / 16), eSY, eTX + (spacing / 16), eTY);
+    stroke(curWeaveColor);
+    fastBezier(bTX, bTY, bSX, bSY, eSX, eSY, eTX, eTY);
+    ctx.restore();
+    _renderer._cachedStrokeStyle = undefined; // p5's style cache described the state before restore()
+    _renderer._cachedFillStyle = undefined;
+  };
+
+  // Strip positions continue the real rows' spacing: row i sits at i * spacing + spacing * 0.125.
+  // Row index parity decides the pass, as in the loop below.
+  const extraLeft = (pass) => {
+    if (!extraHair || !drawLeftHair || sideExtA <= 0) return;
+    for (let k = 1; ; k++) {
+      const stripY = (-k * spacing) + (spacing * 0.125);
+      if (stripY + (spacing / 4) - spreadPx < lineMin) break;
+      if ((((-k) % passes) + passes) % passes === pass) drawExtraStrand(stripY, true);
+    }
+  };
+  const extraRight = (pass) => {
+    if (!extraHair || !drawRightHair || sideExtB <= 0) return;
+    for (let i = numLines; ; i++) {
+      const stripY = (i * spacing) + (spacing * 0.125);
+      if (stripY + (spacing / 4) + spreadPx > lineMax) break;
+      if (i % passes === pass) drawExtraStrand(stripY, false);
+    }
+  };
+
   noFill();
   
 
   for (let currentPass = 0; currentPass < passes; currentPass++) {
+    withHairRng(() => extraLeft(currentPass)); // wide: outer-left strands, before this pass's rows
 
     // draw each face's set of components (faceLines, connectLines, weaveLines, and their shadows)
     // if drawing weaveLines, do it in 2 passes: first evens then odds. 
@@ -1424,6 +1518,7 @@ function drawFace(regX, regY, imageDim) {
            
       }
     }    
+    withHairRng(() => extraRight(currentPass)); // wide: outer-right strands, after this pass's rows
   }
   
   pop();
