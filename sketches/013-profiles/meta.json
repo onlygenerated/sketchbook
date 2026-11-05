@@ -1,0 +1,8 @@
+{
+  "title": "Profiles",
+  "date": "2026-11-04",
+  "tags": ["generative", "portrait", "study"],
+  "description": "A study of the new head generator: proportionally correct profiles built algorithmically from artists' and anatomists' proportions, drawn in lines.",
+  "interaction": "tap a face for a new one  ·  style, guides and sing buttons",
+  "status": "wip"
+}

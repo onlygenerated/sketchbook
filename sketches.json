@@ -1,7 +1,23 @@
 {
   "generated": "2026-11-05",
-  "count": 12,
+  "count": 13,
   "sketches": [
+    {
+      "slug": "013-profiles",
+      "number": 13,
+      "title": "Profiles",
+      "date": "2026-11-04",
+      "tags": [
+        "generative",
+        "portrait",
+        "study"
+      ],
+      "description": "A study of the new head generator: proportionally correct profiles built algorithmically from artists' and anatomists' proportions, drawn in lines.",
+      "status": "wip",
+      "interaction": "tap a face for a new one  ·  style, guides and sing buttons",
+      "path": "sketches/013-profiles/",
+      "thumb": null
+    },
     {
       "slug": "012-chorus-ensemble",
       "number": 12,
