@@ -1073,16 +1073,20 @@ function drawWaterline(ctx, dt) {
     for (let q = 0; q < n; q++) {
       const u = q / (n - 1);
       const x = water.from > 0 ? u * W * end : W - u * W * end;
-      // the line breaks where a neck stands in the water, and eases in to meet each side of it
-      let inside = false, still = 1;
+      // the line eases in to meet each side of a neck where it stands in the water, and inside the
+      // neck it swells gently between the two sides, so it runs through unbroken
+      let inside = null, still = 1;
       for (const [a, b] of water.spans) {
-        if (x > a && x < b) inside = true;
+        if (x > a && x < b) inside = [a, b];
         const d = x < a ? a - x : x > b ? x - b : 0;
         still = Math.min(still, smooth01(d / pin));
       }
-      if (inside && layer === 0) { pen = false; continue; }
       const wave = Math.sin(x * 0.011 - clock * sp1 + layer * 1.3) + 0.5 * Math.sin(x * 0.027 + clock * sp2);
-      const y = water.hz + layer * D * 0.018 + A * (layer ? 0.6 : 1) * (layer ? 1 : still) * wave;
+      let y = water.hz + layer * D * 0.018 + A * (layer ? 0.6 : 1) * (layer ? 1 : still) * wave;
+      if (inside && layer === 0) {
+        const t = (x - inside[0]) / (inside[1] - inside[0]);
+        y = water.hz + A * 0.6 * Math.sin(Math.PI * t) * Math.sin(clock * sp1 * 1.5 + inside[0] * 0.01);
+      }
       if (pen) ctx.lineTo(x, y); else { ctx.moveTo(x, y); pen = true; }
     }
     strokeStyleWater(ctx, alpha * water.a, width_);
