@@ -1,0 +1,9 @@
+{
+  "title": "Chorus (silhouettes)",
+  "date": "2026-11-05",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "014 with no ears, eyes or brows: only the singing silhouettes and their hair.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 014-chorus-new-faces"
+}
