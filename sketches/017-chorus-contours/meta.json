@@ -7,7 +7,7 @@
     "portrait",
     "live"
   ],
-  "description": "Faces drawn only as contours (the outline repeated in shrinking rings) on bright pastel backgrounds. Fast music makes it frantic: the background races and lurches on the beat, the rings jump apart, and heads pop in and out on the beat. A wild slider sets how far it goes.",
+  "description": "Faces drawn only as contours on bright pastel backgrounds. Every contour is a free line: leaving faces unravel and noodle off the screen, new faces are built from lines that noodle in and coalesce, and faces turn into other faces. Fast music makes it frantic, and a wild slider sets how far it goes.",
   "interaction": "use laptop audio, a song or the mic  ·  wild slider  ·  N new scene  ·  B new background  ·  tap to pause",
   "status": "wip",
   "original": "fork of 016-chorus-frenetic"

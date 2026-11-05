@@ -16,6 +16,12 @@
 //   - heads join and leave on the beat, pop in and out when the music is fast, and in frantic
 //     passages flip direction and jolt
 //
+// Strands (third pass): every contour is a line in screen space that can slide along a path, like
+// a train on a track. A leaving face unravels: each contour peels away from one end and noodles off
+// the screen in its own direction. A new face is built from lines that noodle in from off screen
+// and slide into place. And a face can turn into another: its contours peel off, travel, and
+// become the new face's contours. Scene changes do this for the whole cast at once.
+//
 // 016 notes:
 // Fork of 015 with a new composition and more life when the music is fast:
 //   - heads are whole and spread through the frame at different heights and sizes, their necks
@@ -122,7 +128,8 @@ const BRIGHT_SHIFT = 0.3; // centroid shift (in bands) that changes the backgrou
 // ---------------------------------------------------------------------------------------------------
 // Scenes and the ensemble
 // ---------------------------------------------------------------------------------------------------
-function newCast(seed) {
+function newCast(seed, morph) {
+  const old = morph && cast ? cast.singers.filter((s) => s.life !== 'leave' && s.polys) : [];
   castSeed = seed || ((Math.random() * 4294967296) >>> 0);
   R = makeRng(castSeed);
   const W = width, H = height;
@@ -184,6 +191,7 @@ function newCast(seed) {
   for (const s of c.singers) { s.fade = 0.45; s.life = 'enter'; } // a new scene rises into view
   finishRoster(c);
   cast = c;
+  if (morph) morphCast(old, c.singers);
   beatsInPhrase = 0;
   newDetail();
 }
@@ -223,6 +231,8 @@ function makeSinger(c, x, h, dir, extra = {}) {
   if (kind === 'child') s.h *= 0.82;
   s.x = x + dir * 0.43 * s.h; // scenes place a singer by the middle of the head; s.x is the brow
   s.rowHue = new Float32Array(400);
+  s.rings = Math.max(4, Math.min(22, Math.round(0.75 / (c.ring.gap * s.gapMul)) + 1));
+  s.ready = new Array(s.rings).fill(true); // false while a strand is still on its way to that contour
   s.yNow = s.y; s.alphaNow = 0;
   return s;
 }
@@ -251,7 +261,7 @@ function widestGap(xs, lo, hi) {
   return at + (R() - 0.5) * best * 0.3;
 }
 
-function addSinger() {
+function addSinger(noStrands) {
   const c = cast;
   const live = c.singers.filter((s) => s.life !== 'leave');
   if (live.length >= c.maxN) return false;
@@ -281,26 +291,52 @@ function addSinger() {
   s.punch = 1;
   c.singers.push(s);
   finishRoster(c);
-  return true;
+  if (!noStrands && strands.length + s.rings <= STRAND_CAP) formStrands(s);
+  return s;
+}
+
+// Who leaves: the quiet ones first. With anyone, the cast may shrink below its minimum (used when a
+// face turns into another).
+function chooseLeaver(anyone) {
+  const c = cast;
+  const live = c.singers.filter((s) => s.life !== 'leave' && !s.soloist);
+  if (!live.length) return null;
+  if (!anyone) {
+    if (c.singers.filter((s) => s.life !== 'leave').length <= c.minN) return null;
+    if (c.arrangement === 'duet') { // keep at least one singer on each side
+      for (const side of ['L', 'R']) {
+        if (live.filter((q) => q.side === side).length <= 1) {
+          for (let i = live.length - 1; i >= 0; i--) if (live[i].side === side) live.splice(i, 1);
+        }
+      }
+      if (!live.length) return null;
+    }
+  }
+  live.sort((a, b) => (a.singing ? 1 : 0) - (b.singing ? 1 : 0) || a.e - b.e);
+  return live[Math.min(live.length - 1, Math.floor(Math.random() * Math.min(2, live.length)))];
+}
+
+function detach(s) {
+  const i = cast.singers.indexOf(s);
+  if (i >= 0) cast.singers.splice(i, 1);
+  finishRoster(cast);
 }
 
 function removeSinger() {
-  const c = cast;
-  const live = c.singers.filter((s) => s.life !== 'leave' && !s.soloist);
-  if (c.singers.filter((s) => s.life !== 'leave').length <= c.minN || !live.length) return false;
-  if (c.arrangement === 'duet') { // keep at least one singer on each side
-    for (const side of ['L', 'R']) {
-      if (live.filter((q) => q.side === side).length <= 1) {
-        for (let i = live.length - 1; i >= 0; i--) if (live[i].side === side) live.splice(i, 1);
-      }
-    }
-    if (!live.length) return false;
-  }
-  // the quiet ones leave first
-  live.sort((a, b) => (a.singing ? 1 : 0) - (b.singing ? 1 : 0) || a.e - b.e);
-  const s = live[Math.min(live.length - 1, Math.floor(Math.random() * Math.min(2, live.length)))];
-  s.life = 'leave';
-  finishRoster(c);
+  const s = chooseLeaver(false);
+  if (!s) return false;
+  if (s.polys && strands.length + s.rings <= STRAND_CAP) { detach(s); unravel(s); } // it unravels
+  else { s.life = 'leave'; finishRoster(cast); } // too busy: it just fades
+  return true;
+}
+
+// One face turns into another somewhere else: its contours peel off and become the new face's.
+function morphSinger() {
+  const s = chooseLeaver(true);
+  if (!s || !s.polys || strands.length + 2 * s.rings > STRAND_CAP) return false;
+  detach(s);
+  const n = addSinger(true);
+  if (n) morphStrands(s, n); else unravel(s);
   return true;
 }
 
@@ -543,7 +579,7 @@ function listen(dt) {
   const hushTarget = lvl < 0.04 ? 1 : clamp01((-mood.swell - 0.55) * 2.2);
   mood.hush += (hushTarget - mood.hush) * (hushTarget > mood.hush ? 0.06 : 0.12);
   // The music coming back after a hush resets the whole scene.
-  if (mood.hushWas > 0.6 && mood.hush < 0.25) { newCast(); newBackground(); }
+  if (mood.hushWas > 0.6 && mood.hush < 0.25) { newCast(0, true); newBackground(); }
   mood.hushWas = mood.hush > 0.6 ? Math.max(mood.hushWas, mood.hush) : (mood.hush < 0.25 ? 0 : mood.hushWas);
 
   // Changes in the sound: compare the spectrum's shape over the last ~0.3 s with the last ~4 s.
@@ -560,7 +596,7 @@ function listen(dt) {
   change.cool -= dt; change.majorCool -= dt; change.bgCool -= dt;
   if (change.novelty > MAJOR_AT && change.majorCool <= 0) {
     change.majorCool = 20; change.cool = 3; change.bgCool = 5;
-    newCast(); newBackground();
+    newCast(0, true); newBackground();
   } else if (change.novelty > CHANGE_AT && change.cool <= 0) {
     change.cool = rnd(1.2, 2.5);
     onMusicChange();
@@ -637,15 +673,17 @@ function onBeat() {
   if (rosterWant) doRoster();
   else if (started && rosterCool <= 0.5 && chance(0.05 + 0.5 * F)) {
     const live = cast.singers.filter((s) => s.life !== 'leave').length, target = rosterTarget();
-    rosterWant = chance(live < target ? 0.75 : live > target ? 0.25 : 0.5) ? 1 : -1; rosterAny = true;
-    const dir = rosterWant;
-    if (doRoster() && F > 0.6 && chance(F - 0.3)) { rosterWant = -dir; rosterAny = false; doRoster(); }
+    if (F > 0.5 && chance(0.6 * F)) morphSinger(); // fast music: a face turns into another
+    else {
+      rosterWant = chance(live < target ? 0.75 : live > target ? 0.25 : 0.5) ? 1 : -1; rosterAny = true;
+      doRoster();
+    }
     rosterCool = Math.min(rosterCool, 0.3);
-  }
+  } else if (started && chance(0.04 + 0.12 * F)) morphSinger(); // now and then, even when calm
   bg.beatsLeft -= 1 + mood.F; // frantic music changes the backdrop sooner
   if (bg.beatsLeft <= 0) newBackground();
   if (++beatsInPhrase >= cast.phraseLen * (1 - 0.5 * mood.F)) {
-    if (chance(0.75)) newCast(); // a new arrangement; the background keeps its own timing
+    if (chance(0.75)) newCast(0, true); // a new arrangement; the background keeps its own timing
     else beatsInPhrase = 0;
   }
 }
@@ -681,7 +719,10 @@ function draw() {
   drawBackground(ctx, dt);
 
   const W = width, H = height, D = Math.min(W, H);
-  for (const s of cast.singers) drawSinger(ctx, s);
+  for (const s of cast.singers) computeRings(s);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (const s of cast.singers) drawHead(ctx, s);
+  updateStrands(ctx, dt);
 
   if (started) fpsMeter.frame(performance.now() - frameStart);
 }
@@ -707,59 +748,306 @@ function singerPivot(s) {
   return { x: s.x - s.dir * (Profiles.G - 0.16) * s.h, y: s.yNow + 0.95 * s.h };
 }
 
-// Everything inside a head is drawn in head units (crown y = 0, chin y = 1, face toward +x) by
-// scaling the canvas, so the face points the right way for either direction.
-function drawSinger(ctx, s) {
-  const h = s.h, dir = s.dir;
-  const shp = Profiles.shape(s.head, s.open);
-  const hue = cast.rootHue + s.hueOffset;
+// ---------------------------------------------------------------------------------------------------
+// Contours in screen space
+// ---------------------------------------------------------------------------------------------------
+// Every contour is the head's visible outline (crown to the neck cut, as one open line from the back
+// of the neck round to the front) resampled to NPTS points, scaled toward one point of the head and
+// then placed on screen. Strands use the same number of points, so any contour can become any other.
+const NPTS = 200;
 
-  ctx.save();
-  const pv = singerPivot(s);
-  ctx.translate(pv.x, pv.y);
-  ctx.rotate(-dir * s.tilt * Math.PI / 180);
-  ctx.translate(-pv.x, -pv.y);
-  ctx.translate(s.x - dir * Profiles.G * h + s.jx * h, s.yNow + s.jy * h);
-  ctx.scale(dir * h, h);
-  ctx.globalAlpha = s.alphaNow;
-  const px = 1 / h; // one screen pixel, in head units
+function hsbArr(h, s, b) {
+  h = wrapHue(h); s = clamp01(s / 100); b = clamp01(b / 100);
+  const f = (n) => { const k = (n + h / 60) % 6; return (b - b * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255; };
+  return [f(5), f(3), f(1)];
+}
+const rgbaArr = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
-  drawEcho(ctx, s, shp, px, hue);
-  ctx.restore();
+// The open outline in head units, resampled evenly by length.
+const curveTmp = [];
+function headCurve(shp, out) {
+  const o = shp.outline, n = o.length;
+  let i = 0;
+  while (i < n && o[i][1] <= NECK_END) i++;
+  let j = i;
+  while (j + 1 < n && o[j + 1][1] > NECK_END) j++;
+  const cross = (p, q) => { const t = (NECK_END - p[1]) / (q[1] - p[1]); return [p[0] + (q[0] - p[0]) * t, NECK_END]; };
+  const pts = curveTmp; pts.length = 0;
+  if (i >= n || j + 1 >= n || i === 0) { for (const p of o) pts.push(p); pts.push(o[0]); } // (never expected)
+  else {
+    pts.push(cross(o[j + 1], o[j]));
+    for (let q = j + 1; q < n; q++) pts.push(o[q]);
+    for (let q = 0; q < i; q++) pts.push(o[q]);
+    pts.push(cross(o[i - 1], o[i]));
+  }
+  resample(pts, out);
 }
 
-// Echo: the outline repeated, shrinking toward one point of the head, like ripples. The scene sets
-// the spacing; the rings spread apart on loud notes, jump apart on the beat, and wobble with the
-// singer's band. They stop where the neck fades out.
-function drawEcho(ctx, s, shp, px, hue) {
+// Resample a polyline (array of [x, y]) to NPTS evenly spaced points.
+function resample(pts, out) {
+  const m = pts.length, cum = new Float64Array(m);
+  for (let q = 1; q < m; q++) cum[q] = cum[q - 1] + Math.hypot(pts[q][0] - pts[q - 1][0], pts[q][1] - pts[q - 1][1]);
+  const total = cum[m - 1];
+  let q = 0;
+  for (let k = 0; k < NPTS; k++) {
+    const d = total * k / (NPTS - 1);
+    while (q < m - 2 && cum[q + 1] < d) q++;
+    const seg = cum[q + 1] - cum[q], t = seg > 0 ? (d - cum[q]) / seg : 0;
+    out[2 * k] = pts[q][0] + (pts[q + 1][0] - pts[q][0]) * t;
+    out[2 * k + 1] = pts[q][1] + (pts[q + 1][1] - pts[q][1]) * t;
+  }
+}
+
+// Each frame, every head's contours in screen coordinates, with their colors and widths. The scene
+// sets the spacing; the rings spread apart on loud notes, jump apart on the beat, and wobble with
+// the singer's band.
+function computeRings(s) {
+  const shp = Profiles.shape(s.head, s.open);
+  if (!s.polys) s.polys = {
+    base: new Float32Array(2 * NPTS),
+    pts: Array.from({ length: s.rings }, () => new Float32Array(2 * NPTS)),
+    style: Array.from({ length: s.rings }, () => ({ rgb: [0, 0, 0], w: 1, a: 1 })),
+  };
+  const P = s.polys, base = P.base;
+  headCurve(shp, base);
   const ring = cast.ring, F = mood.F, m = shp.marks;
   const c = ring.center === 'mouth' ? [m.mouth.x, m.mouth.y] : ring.center === 'eye' ? [m.eye.x, m.eye.y]
     : ring.center === 'skull' ? [shp.skull.cx, shp.skull.cy] : [m.ear.x, m.ear.y];
-  const gap = ring.gap * s.gapMul;
-  const rings = Math.max(4, Math.min(22, Math.round(0.75 / gap) + 1));
+  const rings = s.rings, gap = ring.gap * s.gapMul;
   const span = Math.min(0.97, Math.min(0.8, gap * (rings - 1)) * (1 + 0.35 * s.e * (0.3 + F) + 0.5 * s.punch * (0.3 + F)));
-  const omega = 2.2 + s.band * 1.6;
-  const wob = 0.02 * s.vib * (0.4 + 2.5 * F);
+  const omega = 2.2 + s.band * 1.6, wob = 0.02 * s.vib * (0.4 + 2.5 * F);
   const thin = Math.sqrt(Math.min(1, 7 / rings)); // many rings: finer lines
-  ctx.lineJoin = 'round';
-  for (let k = rings - 1; k >= 0; k--) {
+  const hue = cast.rootHue + s.hueOffset;
+  const h = s.h, dir = s.dir;
+  const pv = singerPivot(s), ang = -dir * s.tilt * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+  const ox = s.x - dir * Profiles.G * h + s.jx * h, oy = s.yNow + s.jy * h;
+  for (let k = 0; k < rings; k++) {
     const u = k / (rings - 1);
     const sc = 1 - span * Math.pow(u, ring.curve) + Math.sin(clock * omega + k * 0.9 + s.vph) * wob;
-    const rgb = hsbRgb(hue + s.rowHue[k] * 1.5, 85, 92);
-    ctx.lineWidth = px * (k === 0 ? 3.2 : (2.2 - u * 1.1) * thin) * (1 + s.e * 0.6);
-    ctx.strokeStyle = rgba(rgb, k === 0 ? 1 : 0.85 - u * 0.55);
-    ctx.beginPath();
-    let pen = false, first = null;
-    for (const p of shp.outline) {
-      const y = c[1] + (p[1] - c[1]) * sc;
-      if (p[1] > NECK_END) { pen = false; continue; }
-      const x = c[0] + (p[0] - c[0]) * sc;
-      if (pen) ctx.lineTo(x, y); else { ctx.moveTo(x, y); pen = true; }
-      if (!first) first = [x, y];
+    const out = P.pts[k];
+    for (let q = 0; q < NPTS; q++) {
+      const hx = c[0] + (base[2 * q] - c[0]) * sc, hy = c[1] + (base[2 * q + 1] - c[1]) * sc;
+      const dx = ox + dir * h * hx - pv.x, dy = oy + h * hy - pv.y;
+      out[2 * q] = pv.x + dx * ca - dy * sa;
+      out[2 * q + 1] = pv.y + dx * sa + dy * ca;
     }
-    const p0 = shp.outline[0];
-    if (pen && p0[1] <= NECK_END) ctx.lineTo(first[0], first[1]); // join the ends at the hairline
-    ctx.stroke();
+    const st = P.style[k];
+    st.rgb = hsbArr(hue + s.rowHue[k] * 1.5, 85, 92);
+    st.w = (k === 0 ? 3.2 : (2.2 - u * 1.1) * thin) * (1 + s.e * 0.6);
+    st.a = (k === 0 ? 1 : 0.85 - u * 0.55) * s.alphaNow;
+  }
+}
+
+function strokePoly(ctx, pts, rgb, w, a) {
+  if (a < 0.01) return;
+  ctx.strokeStyle = rgbaArr(rgb, a);
+  ctx.lineWidth = w;
+  ctx.beginPath();
+  ctx.moveTo(pts[0], pts[1]);
+  for (let q = 1; q < NPTS; q++) ctx.lineTo(pts[2 * q], pts[2 * q + 1]);
+  ctx.stroke();
+}
+
+function drawHead(ctx, s) {
+  const P = s.polys;
+  for (let k = s.rings - 1; k >= 0; k--) if (s.ready[k]) strokePoly(ctx, P.pts[k], P.style[k].rgb, P.style[k].w, P.style[k].a);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Strands: contours on the move
+// ---------------------------------------------------------------------------------------------------
+// A strand is a line sliding along a track: the track starts with the line's own shape, then a wavy
+// transit (a curve that leaves the line's end smoothly and arrives smoothly), then either a target
+// contour on a live head (which it slides into) or a straight run off the screen. The line keeps
+// its length as it goes (stretching toward the target's length), so it peels off from its leading
+// end and noodles along behind it.
+const strands = [];
+const STRAND_CAP = 500;
+const track = { x: new Float64Array(1200), y: new Float64Array(1200), c: new Float64Array(1200), n: 0 };
+
+function polyLen(a, n = a.length / 2) {
+  let L = 0;
+  for (let q = 1; q < n; q++) L += Math.hypot(a[2 * q] - a[2 * q - 2], a[2 * q + 1] - a[2 * q - 1]);
+  return L;
+}
+const reversed = (a) => { const n = a.length / 2, r = new Float32Array(a.length); for (let q = 0; q < n; q++) { r[2 * q] = a[2 * (n - 1 - q)]; r[2 * q + 1] = a[2 * (n - 1 - q) + 1]; } return r; };
+
+// From point (x, y) heading at angle th, a point just past the edge of the screen.
+function exitPoint(x, y, th) {
+  const dx = Math.cos(th), dy = Math.sin(th), W = width, H = height;
+  let t = 1e9;
+  if (dx > 1e-6) t = Math.min(t, (W - x) / dx); else if (dx < -1e-6) t = Math.min(t, -x / dx);
+  if (dy > 1e-6) t = Math.min(t, (H - y) / dy); else if (dy < -1e-6) t = Math.min(t, -y / dy);
+  t = Math.max(0, t) + Math.min(W, H) * 0.12;
+  return [x + dx * t, y + dy * t];
+}
+
+function newStrand(prefix, style, o) {
+  const st = {
+    prefix, L0: polyLen(prefix), rgb: style.rgb.slice(), w: style.w, a: style.a,
+    t: 0, T: o.T, easeIn: !!o.easeIn, target: o.target || null, rev: !!o.rev,
+    B: o.B || null, dB: o.dB || null,
+    a1: rnd(0.25, 0.75), a2: rnd(0.25, 0.75), amp: rnd(0.04, 0.18) * (0.7 + mood.F), freq: rnd(0.8, 3.2), ph: rnd(0, 6.28),
+    pts: new Float32Array(2 * NPTS), tp: o.target ? new Float32Array(2 * NPTS) : null,
+  };
+  strands.push(st);
+  return st;
+}
+
+// Off the screen, wavily, from the strand's leading end.
+function flowOff(prefix, style, th, T) {
+  const n = prefix.length / 2, ax = prefix[2 * n - 2], ay = prefix[2 * n - 1];
+  const B = exitPoint(ax, ay, th);
+  return newStrand(prefix, style, { B, dB: [Math.cos(th), Math.sin(th)], T, easeIn: true });
+}
+
+const flowT = () => lerp(2.6, 1.1, mood.F) * rnd(0.8, 1.3);
+const formT = () => lerp(2.3, 0.8, mood.F) * rnd(0.8, 1.25);
+
+// A leaving face: every finished contour peels off and flows away in its own direction.
+function unravel(s) {
+  const base = Math.random() * Math.PI * 2;
+  for (let k = 0; k < s.rings; k++) {
+    if (!s.ready[k]) continue;
+    const pts = s.polys.pts[k];
+    flowOff(Math.random() < 0.5 ? pts.slice() : reversed(pts), s.polys.style[k], base + rnd(-1.6, 1.6), flowT() + k * rnd(0, 0.04));
+  }
+}
+
+// A new face: its contours noodle in from off the screen, from roughly one side, and coalesce.
+function formStrands(s, only) {
+  computeRings(s);
+  s.fade = 1; s.life = 'live'; s.alphaNow = s.alpha;
+  computeRings(s);
+  const cx = s.x - s.dir * 0.43 * s.h, cy = s.y + 0.6 * s.h;
+  const base = Math.random() * Math.PI * 2;
+  for (let k = 0; k < s.rings; k++) {
+    if (only && !only.includes(k)) continue;
+    s.ready[k] = false;
+    const th = base + rnd(-0.9, 0.9);
+    const S = exitPoint(cx, cy, th), v = [-Math.cos(th), -Math.sin(th)];
+    const L1 = polyLen(s.polys.pts[k]);
+    const prefix = new Float32Array([S[0] - v[0] * L1, S[1] - v[1] * L1, S[0], S[1]]);
+    newStrand(prefix, s.polys.style[k], { target: { s, k }, T: formT() + k * 0.03, rev: Math.random() < 0.5 });
+  }
+}
+
+// One face into another: contour for contour; spare old ones flow off, missing new ones fly in.
+function morphStrands(o, n) {
+  computeRings(n);
+  n.fade = 1; n.life = 'live'; n.alphaNow = n.alpha;
+  computeRings(n);
+  const from = [];
+  for (let k = 0; k < o.rings; k++) if (o.ready[k]) from.push(k);
+  const missing = [];
+  for (let k = 0; k < n.rings; k++) {
+    n.ready[k] = false;
+    if (k < from.length) {
+      const pts = o.polys.pts[from[k]];
+      newStrand(Math.random() < 0.5 ? pts.slice() : reversed(pts), o.polys.style[from[k]], { target: { s: n, k }, T: formT() + k * 0.03, rev: Math.random() < 0.5 });
+    } else missing.push(k);
+  }
+  if (missing.length) formStrands(n, missing);
+  const base = Math.random() * Math.PI * 2;
+  for (let q = n.rings; q < from.length; q++) flowOff(o.polys.pts[from[q]].slice(), o.polys.style[from[q]], base + rnd(-1.6, 1.6), flowT());
+}
+
+// A whole new scene: old faces turn into new ones in random pairs; the rest unravel or form.
+function morphCast(old, fresh) {
+  const need = old.reduce((t, s) => t + s.rings, 0) + fresh.reduce((t, s) => t + s.rings, 0);
+  if (strands.length + need > STRAND_CAP) return; // too busy: the plain fade
+  const olds = old.slice().sort(() => Math.random() - 0.5);
+  fresh.forEach((n, i) => { if (i < olds.length) morphStrands(olds[i], n); else formStrands(n); });
+  for (let i = fresh.length; i < olds.length; i++) unravel(olds[i]);
+}
+
+function updateStrands(ctx, dt) {
+  for (let i = strands.length - 1; i >= 0; i--) {
+    const st = strands[i];
+    // its face left before it arrived: it flows off instead, from where it is
+    if (st.target && (!cast.singers.includes(st.target.s) || st.target.s.life === 'leave')) {
+      const repl = flowOff(st.pts.slice(), st, Math.random() * Math.PI * 2, flowT());
+      strands.pop(); strands[i] = repl;
+      continue;
+    }
+    st.t += dt;
+    const u = clamp01(st.t / st.T);
+    const e = st.easeIn ? u * u : smooth01(u);
+    buildTrack(st);
+    const total = track.c[track.n - 1];
+    const L1 = st.target ? st.L1 : st.L0;
+    const L = lerp(st.L0, L1, e);
+    windowOf(st.pts, e * Math.max(0, total - L), L);
+    let rgb = st.rgb, w = st.w, a = st.a;
+    if (st.target) {
+      const ts = st.target.s.polys.style[st.target.k];
+      rgb = [lerp(st.rgb[0], ts.rgb[0], e), lerp(st.rgb[1], ts.rgb[1], e), lerp(st.rgb[2], ts.rgb[2], e)];
+      w = lerp(st.w, ts.w, e); a = lerp(st.a, ts.a, e);
+    }
+    strokePoly(ctx, st.pts, rgb, w, a);
+    if (u >= 1) {
+      if (st.target) st.target.s.ready[st.target.k] = true;
+      strands.splice(i, 1);
+    }
+  }
+}
+
+function pushPt(x, y) {
+  const n = track.n;
+  track.x[n] = x; track.y[n] = y;
+  track.c[n] = n ? track.c[n - 1] + Math.hypot(x - track.x[n - 1], y - track.y[n - 1]) : 0;
+  track.n++;
+}
+
+// The strand's whole track for this frame (the target may have moved).
+function buildTrack(st) {
+  track.n = 0;
+  const pre = st.prefix, np = pre.length / 2;
+  for (let q = 0; q < np; q++) pushPt(pre[2 * q], pre[2 * q + 1]);
+  const ax = pre[2 * np - 2], ay = pre[2 * np - 1];
+  let dax = ax - pre[2 * np - 4], day = ay - pre[2 * np - 3];
+  const dl = Math.hypot(dax, day) || 1; dax /= dl; day /= dl;
+  let bx, by, dbx, dby, tp = null;
+  if (st.target) {
+    const src = st.target.s.polys.pts[st.target.k];
+    tp = st.tp;
+    if (st.rev) for (let q = 0; q < NPTS; q++) { tp[2 * q] = src[2 * (NPTS - 1 - q)]; tp[2 * q + 1] = src[2 * (NPTS - 1 - q) + 1]; }
+    else tp.set(src);
+    st.L1 = polyLen(tp);
+    bx = tp[0]; by = tp[1];
+    dbx = tp[2] - tp[0]; dby = tp[3] - tp[1];
+    const l = Math.hypot(dbx, dby) || 1; dbx /= l; dby /= l;
+  } else { bx = st.B[0]; by = st.B[1]; dbx = st.dB[0]; dby = st.dB[1]; }
+  // the wavy transit: a cubic from A to B, plus a sideways wave that vanishes at both ends
+  const chx = bx - ax, chy = by - ay, len = Math.hypot(chx, chy);
+  if (len > 1) {
+    const D = Math.min(width, height);
+    const c1x = ax + dax * len * st.a1, c1y = ay + day * len * st.a1;
+    const c2x = bx - dbx * len * st.a2, c2y = by - dby * len * st.a2;
+    const nx = -chy / len, ny = chx / len, amp = Math.min(st.amp * D, len * 0.35);
+    const m = Math.max(12, Math.min(160, Math.round(len / (D * 0.012))));
+    for (let j = 1; j < m; j++) {
+      const t = j / m, it = 1 - t;
+      const x = it * it * it * ax + 3 * it * it * t * c1x + 3 * it * t * t * c2x + t * t * t * bx;
+      const y = it * it * it * ay + 3 * it * it * t * c1y + 3 * it * t * t * c2y + t * t * t * by;
+      const wv = amp * Math.sin(Math.PI * t) * Math.sin(2 * Math.PI * st.freq * t + st.ph);
+      pushPt(x + nx * wv, y + ny * wv);
+    }
+  }
+  if (tp) for (let q = 0; q < NPTS; q++) pushPt(tp[2 * q], tp[2 * q + 1]);
+  else { pushPt(bx, by); pushPt(bx + dbx * (st.L0 * 1.05 + 10), by + dby * (st.L0 * 1.05 + 10)); }
+}
+
+// The stretch of track from distance s0, of length L, as NPTS points.
+function windowOf(out, s0, L) {
+  const n = track.n, X = track.x, Y = track.y, C = track.c;
+  let q = 0;
+  for (let k = 0; k < NPTS; k++) {
+    const d = s0 + L * k / (NPTS - 1);
+    while (q < n - 2 && C[q + 1] < d) q++;
+    const seg = C[q + 1] - C[q], t = seg > 0 ? clamp01((d - C[q]) / seg) : 0;
+    out[2 * k] = X[q] + (X[q + 1] - X[q]) * t;
+    out[2 * k + 1] = Y[q] + (Y[q + 1] - Y[q]) * t;
   }
 }
 
@@ -911,7 +1199,7 @@ function keyPressed(e) {
   else if (k === 'h') document.body.classList.toggle('clean');
   else if (k === 'm') document.body.classList.toggle('no-meter');
   else if (k === 'p') toggleLowRes();
-  else if (k === 'n') newCast();
+  else if (k === 'n') newCast(0, true);
   else if (k === 'b') newBackground();
   else if (key === ' ') {
     if (started) togglePause();
