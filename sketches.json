@@ -1,7 +1,24 @@
 {
   "generated": "2026-11-05",
-  "count": 15,
+  "count": 16,
   "sketches": [
+    {
+      "slug": "016-chorus-frenetic",
+      "number": 16,
+      "title": "Chorus (frenetic)",
+      "date": "2026-11-05",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "live"
+      ],
+      "description": "015 with whole heads spread through the frame, a moving background, and faces that quiver to their own frequency band and bounce on the beat. The faster the music, the more frantic it gets.",
+      "status": "wip",
+      "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+      "path": "sketches/016-chorus-frenetic/",
+      "thumb": null
+    },
     {
       "slug": "015-chorus-silhouettes",
       "number": 15,

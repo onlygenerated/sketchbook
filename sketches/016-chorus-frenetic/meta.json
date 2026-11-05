@@ -1,0 +1,9 @@
+{
+  "title": "Chorus (frenetic)",
+  "date": "2026-11-05",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "015 with whole heads spread through the frame, a moving background, and faces that quiver to their own frequency band and bounce on the beat. The faster the music, the more frantic it gets.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 015-chorus-silhouettes"
+}
