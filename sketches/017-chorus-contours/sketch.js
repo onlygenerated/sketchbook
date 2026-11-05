@@ -131,7 +131,9 @@ let lastStep = 0;         // when the story last took a step
 let wild = 1.5;           // the wild slider: scales the frenzy (0 calm, 1 as the music says, 2.5 unhinged)
 
 const mood = { fast: null, slow: null, swell: 0, swellSlow: 0, tilt: 0, hush: 0, hushWas: 0, level: 0, n: 0, beats: [], frenzy: 0, F: 0 };
-const beat = { avg: 0, last: 0, accent: 0 };
+const beat = { avg: 0, last: 0, accent: 0, ibi: 0.8 }; // ibi: the usual time between beats, in seconds
+// Onsets: jumps anywhere in the spectrum (snares, hats, voices), for music whose bass doesn't pulse.
+const onset = { prev: null, avg: 0.01 };
 // Changes in the sound itself: the spectrum's shape (novelty) and its brightness (centroid).
 const change = { short: null, long: null, novelty: 0, cool: 6, majorCool: 15, centFast: null, centSlow: null, bgCool: 4 };
 const CHANGE_AT = 0.2;    // novelty that adds or removes a face
@@ -430,6 +432,7 @@ function newStory(seed) {
     },
   };
   story.st = STORIES[name].init(W, H, tall);
+  story.began = clock;
   if (home) story.st.same = false;
 }
 
@@ -777,12 +780,22 @@ function listen(dt) {
   const low = (bands[0] + bands[1] + bands[2]) / 3;
   const now = clock * 1000;
   if (low - beat.avg > 0.055 && low > 0.18 && now - beat.last > 300) {
-    beat.last = now;
+    noteBeat(now);
     beat.accent = mood.swell > 0.3 ? 1 : 0;
     mood.beats.push(now);
     onBeat();
   }
   beat.avg += (low - beat.avg) * 0.09;
+  if (!onset.prev) onset.prev = bands.slice();
+  let flux = 0;
+  for (let i = 0; i < bands.length; i++) { const d = bands[i] - onset.prev[i]; if (d > 0) flux += d; onset.prev[i] = bands[i]; }
+  flux /= bands.length;
+  if (flux > onset.avg * 1.8 + 0.01 && lvl > 0.08 && now - beat.last > 300) {
+    noteBeat(now);
+    mood.beats.push(now);
+    onBeat();
+  }
+  onset.avg += (flux - onset.avg) * 0.04;
   // Frenzy: beats per second over the last 4 seconds, weighted by loudness (0 calm .. 1 frantic).
   while (mood.beats.length && now - mood.beats[0] > 4000) mood.beats.shift();
   const bps = mood.beats.length / 4;
@@ -817,13 +830,24 @@ function listen(dt) {
   }
 }
 
+// One step of the story, on a beat or without one. A story never outlasts 8 beats or 10 seconds.
+function advanceStory() {
+  if (story.b >= Math.min(8, story.phrase * (1 - 0.3 * mood.F)) || clock - story.began > 10) newStory();
+  stepStory(true);
+}
+
+function noteBeat(now) {
+  const iv = (now - beat.last) / 1000;
+  if (iv > 0.25 && iv < 3) beat.ibi += (iv - beat.ibi) * 0.08;
+  beat.last = now;
+}
+
 function onBeat() {
   const F = mood.F;
   bgBeat();
   if (story.st.surge !== undefined) story.st.surge = 1;
   // Every beat the story takes a step and every face is drawn anew.
-  if (story.b >= Math.min(8, story.phrase * (1 - 0.3 * F))) newStory(); // a story never outlasts 8 beats
-  stepStory(true);
+  advanceStory();
   for (const s of cast.singers) {
     s.punch = Math.max(s.punch, 0.5 + 0.5 * F); // the contours jump apart
     if (F > 0.15) s.bob = Math.max(s.bob, 0.4 + 0.6 * F);
@@ -859,7 +883,10 @@ function draw() {
   clock += dt;
   if (started) listen(dt);
   else idleListen();
-  if (clock - lastStep > (started ? 2.5 : 1.6) && mood.hush < 0.5) stepStory(true); // no beat: a slower step
+  // no beat for a while (a drone, a quiet verse): keep the pulse going at the song's usual pace
+  if (started ? clock - lastStep > Math.min(1.8, Math.max(0.5, beat.ibi * 1.25)) && mood.level > 0.04 : clock - lastStep > 1.6) {
+    if (started) onBeat(); else advanceStory();
+  }
   updateRoster(dt);
 
   const ctx = drawingContext;
@@ -1034,21 +1061,25 @@ function drawWaterline(ctx, dt) {
   const W = width, D = Math.min(W, height), F = mood.F;
   const low = started ? (bands[0] + bands[1]) / 2 : 0.3;
   const A = D * (0.009 + 0.022 * low + 0.016 * F + 0.014 * bg.flash);
-  const n = 240, end = smooth01(water.reveal);
+  const n = 240, end = smooth01(water.reveal), pin = 0.045 * D;
+  const sp1 = 0.6 + 0.9 * F, sp2 = 0.4 + 0.6 * F; // how fast the waves travel (gentle, a little quicker when frantic)
   for (const [layer, alpha, width_] of [[0, 0.9, 2.6], [1, 0.35, 1.4]]) {
     ctx.beginPath();
+    let pen = false;
     for (let q = 0; q < n; q++) {
       const u = q / (n - 1);
       const x = water.from > 0 ? u * W * end : W - u * W * end;
-      // still where it meets a neck, rippling away from it
-      let still = 1;
+      // the line breaks where a neck stands in the water, and eases in to meet each side of it
+      let inside = false, still = 1;
       for (const [a, b] of water.spans) {
+        if (x > a && x < b) inside = true;
         const d = x < a ? a - x : x > b ? x - b : 0;
-        still = Math.min(still, smooth01(d / (0.06 * D)));
+        still = Math.min(still, smooth01(d / pin));
       }
-      const wave = Math.sin(x * 0.011 - clock * (2 + 4 * F) + layer * 1.3) + 0.5 * Math.sin(x * 0.027 + clock * (1.3 + 3 * F));
-      const y = water.hz + layer * D * 0.018 + A * (layer ? 0.6 : 1) * still * wave;
-      if (q) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      if (inside && layer === 0) { pen = false; continue; }
+      const wave = Math.sin(x * 0.011 - clock * sp1 + layer * 1.3) + 0.5 * Math.sin(x * 0.027 + clock * sp2);
+      const y = water.hz + layer * D * 0.018 + A * (layer ? 0.6 : 1) * (layer ? 1 : still) * wave;
+      if (pen) ctx.lineTo(x, y); else { ctx.moveTo(x, y); pen = true; }
     }
     strokeStyleWater(ctx, alpha * water.a, width_);
   }
