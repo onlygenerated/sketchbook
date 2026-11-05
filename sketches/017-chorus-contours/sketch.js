@@ -28,6 +28,11 @@
 // procession walks on, the round turns, the eldest leaves and a child joins) and every face is
 // drawn anew: each person's contours flow from where they were to where they are now.
 //
+// Fifth pass: two faces face to face is "home", every third story. A garden of several turning
+// flowers of faces. Reflections meet their face at the waterline as one continuous outline. The
+// procession leader (and the eldest, and the top of a rising column) walks off the screen before
+// leaving. Busy stories cap their contours.
+//
 // 016 notes:
 // Fork of 015 with a new composition and more life when the music is fast:
 //   - heads are whole and spread through the frame at different heights and sizes, their necks
@@ -146,18 +151,32 @@ const NECK_END = 1.3; // the neck fades out by here, in head heights below the c
 const fitH = (cy, h, H) => Math.max(10, Math.min(h, (cy - H * 0.03) / 0.6, (H * 0.97 - cy) / 0.7));
 const wrapIndex = (i, n) => ((i % n) + n) % n;
 
+// A ring of n faces in a square of side D around (cx, cy), crowns outward like petals, each facing
+// the back of the next; each beat everyone moves on one place (or, with pairs, neighbours face each
+// other and stay put).
+function petals(out, cx, cy, D, n, dir, b, prefix, pairs, slot0 = 0) {
+  const h = Math.min(D * 0.3, (2 * Math.PI * 0.46 * D) / (0.95 * n + 4.4)), R0 = 0.46 * D - 0.7 * h;
+  for (let j = 0; j < n; j++) {
+    const th = -Math.PI / 2 + (2 * Math.PI * j) / n;
+    out.push({ cx: cx + R0 * Math.cos(th), cy: cy + R0 * Math.sin(th), h, dir: pairs ? (j % 2 ? -1 : 1) : dir, rot: th + Math.PI / 2,
+      id: prefix + (pairs ? j : wrapIndex(j - dir * b, n)), slot: (slot0 + j) % 7 });
+  }
+  return out;
+}
+
 const STORIES = {
   // A procession: everyone in one straight line, facing the same way, walking on. Each beat the
   // line steps forward: the one in front walks off and someone new joins at the back.
   procession: {
-    weight: 14, tall: 0.6,
+    weight: 14, tall: 0.6, maxRings: 7,
     init: (W, H, tall) => ({ n: tall ? rndInt(3, 4) : rndInt(4, 7), dir: sign(), yc: weighted([0.5, 0.4, 0.6], [50, 25, 25]) }),
     layout(st, b, W, H) {
       const sx = (W * 0.92) / st.n, cy = H * st.yc;
       const h = fitH(cy, Math.min(Math.min(H, W * 1.1) * 0.5, sx * 1.05), H);
-      return Array.from({ length: st.n }, (_, p) => {
-        const x = W * 0.04 + sx * (p + 0.5);
-        return { cx: st.dir > 0 ? x : W - x, cy, h, dir: st.dir, id: b - p, slot: p };
+      // one extra place past the front, off the screen: the leader walks off there before going
+      return Array.from({ length: st.n + 1 }, (_, p) => {
+        const x = p < st.n ? W * 0.04 + sx * (p + 0.5) : W + 0.6 * h;
+        return { cx: st.dir > 0 ? x : W - x, cy, h, dir: st.dir, id: b - p, slot: Math.min(p, 6) };
       });
     },
   },
@@ -165,11 +184,15 @@ const STORIES = {
   // the same way. Each beat everyone moves on a step: the elder at the front walks on and is gone,
   // and a child joins at the back.
   lineage: {
-    weight: 10, tall: 0.6,
+    weight: 10, tall: 0.6, maxRings: 8,
     init: (W, H, tall) => ({ n: tall ? 3 : rndInt(4, 5), dir: sign(), ground: rnd(0.78, 0.92), mid: [pick(['fem', 'masc', 'adult']), pick(['fem', 'masc', 'adult']), pick(['fem', 'masc'])] }),
     layout(st, b, W, H) {
       const sx = (W * 0.92) / st.n, hMax = Math.min(Math.min(H, W * 1.1) * 0.62, sx * 1.15, (H * st.ground - H * 0.04) / 1.3);
-      return Array.from({ length: st.n }, (_, p) => {
+      return Array.from({ length: st.n + 1 }, (_, p) => {
+        if (p === st.n) { // past the front, off the screen: where the elder walks off to
+          const h = hMax;
+          return { cx: st.dir > 0 ? W + 0.6 * h : -0.6 * h, cy: H * st.ground - 0.7 * h, h, dir: st.dir, kind: 'elder', id: b - p, slot: p };
+        }
         const age = p / (st.n - 1); // 0 the child at the back, 1 the elder in front
         const kind = p === 0 ? 'child' : p === st.n - 1 ? 'elder' : st.mid[(p - 1) % 3];
         const h = hMax * (0.7 + 0.3 * age) / (kind === 'child' ? 0.82 : 1);
@@ -181,14 +204,14 @@ const STORIES = {
   // Face to face: two people close together, a conversation or a quarrel. They take turns: the one
   // speaking leans in a little larger. Sometimes it is one person facing their own double.
   faceoff: {
-    weight: 12,
+    weight: 3,
     init: () => ({ same: chance(0.3), yc: rnd(0.45, 0.55), turns: weighted([1, 2], [60, 40]) }),
     layout(st, b, W, H) {
       const cy = H * st.yc, h0 = fitH(cy, Math.min(Math.min(H, W * 1.1) * 0.66, (W * 0.92) / 2.0), H);
       const head = st.same ? Profiles.make(R) : null, speaker = Math.floor(b / st.turns) % 2;
       return [0, 1].map((i) => {
         const h = h0 * (i === speaker ? 1.06 : 0.94);
-        return { cx: W / 2 + (i ? 1 : -1) * 0.52 * h0, cy, h, dir: i ? -1 : 1, id: i ? 'R' : 'L', slot: i ? 5 : 1, head, silent: i !== speaker };
+        return { cx: W / 2 + (i ? 1 : -1) * 0.57 * h0, cy, h, dir: i ? -1 : 1, id: i ? 'R' : 'L', slot: i ? 5 : 1, head, silent: i !== speaker };
       });
     },
   },
@@ -208,20 +231,31 @@ const STORIES = {
     },
   },
   // A round: voices in a circle, each facing the back of the next, passing the song along. Each
-  // beat the circle turns one place.
+  // beat the circle turns one place, like a flower of faces turning.
   round: {
-    weight: 12,
+    weight: 12, maxRings: 9,
     init: (W, H, tall) => ({ n: tall ? rndInt(4, 6) : rndInt(5, 8), dir: sign(), pairs: chance(0.25) }),
     layout(st, b, W, H) {
-      const D = Math.min(W, H), n = st.n;
-      const h = Math.min(D * 0.3, (2 * Math.PI * 0.46 * D) / (0.95 * n + 4.4)), R0 = 0.46 * D - 0.7 * h;
-      return Array.from({ length: n }, (_, j) => {
-        const th = -Math.PI / 2 + (2 * Math.PI * j) / n;
-        // in "pairs" neighbours face each other instead: a circle of conversations, which holds still
-        const dir = st.pairs ? (j % 2 ? -1 : 1) : st.dir;
-        return { cx: W / 2 + R0 * Math.cos(th), cy: H / 2 + R0 * Math.sin(th), h, dir, rot: th + Math.PI / 2,
-          id: st.pairs ? j : wrapIndex(j - st.dir * b, n), slot: j % 7 };
-      });
+      return petals([], W / 2, H / 2, Math.min(W, H), st.n, st.dir, b, '', st.pairs);
+    },
+  },
+  // A garden: several small rounds, each its own circle passing its own song, turning against its
+  // neighbours like gears.
+  garden: {
+    weight: 12, maxRings: 6,
+    init: (W, H, tall) => {
+      const g = tall ? 2 : weighted([2, 3, 4], [40, 40, 20]);
+      return { n: Array.from({ length: g }, () => rndInt(5, 7)), dir: sign(), stagger: g > 2 && chance(0.6), y: rnd(0.45, 0.55) };
+    },
+    layout(st, b, W, H) {
+      const g = st.n.length, tall = W < H, out = [];
+      for (let i = 0; i < g; i++) {
+        const lift = st.stagger ? (i % 2 ? 0.13 : -0.13) : 0;
+        const cx = tall ? W / 2 : (W * (i + 0.5)) / g, cy = tall ? (H * (i + 0.5)) / g : H * (st.y + lift);
+        const D = tall ? Math.min(W, H / g) : Math.min(W / g, H * (1 - 2 * Math.abs(lift)));
+        petals(out, cx, cy, D * 0.98, st.n[i], i % 2 ? -st.dir : st.dir, b, `${i}:`, false, i * 2);
+      }
+      return out;
     },
   },
   // A council: people seated around a table, seen from the side; each half of the ring turns to
@@ -243,7 +277,7 @@ const STORIES = {
   // A performer and an audience: one large face, and rows of small faces turned toward it,
   // mostly listening; now and then one of them sings back.
   audience: {
-    weight: 8,
+    weight: 8, maxRings: 7,
     init: (W, H, tall) => ({ side: sign(), rows: tall ? 3 : rndInt(2, 3), cols: tall ? 2 : rndInt(3, 5) }),
     layout(st, b, W, H) {
       const pc = st.side < 0 ? W * 0.22 : W * 0.78, cy = H * 0.5;
@@ -269,8 +303,9 @@ const STORIES = {
       for (let i = 0; i < st.n; i++) {
         const head = Profiles.make(R);
         const dir = st.facing && st.n > 1 ? (i < st.n / 2 ? 1 : -1) : st.dir, cx = W * 0.05 + sx * (i + 0.5);
-        out.push({ cx, cy: hz - 0.7 * h, h, dir, head, id: `u${i}`, slot: i * 2 });
-        out.push({ cx, cy: hz + 0.7 * h, h, dir: -dir, rot: Math.PI, head, id: `d${i}`, slot: i * 2, alpha: 0.55 });
+        out.push({ cx, cy: hz - 0.7 * h, h, dir, head, id: `u${i}`, slot: i * 2, anchor: true });
+        // the reflection is the face above mirrored in the waterline, so the two meet at the neck
+        out.push({ cx, cy: hz + 0.7 * h, h, dir: -dir, rot: Math.PI, head, id: `d${i}`, slot: i * 2, alpha: 0.55, mirror: out.length - 1, axis: hz });
       }
       return out;
     },
@@ -278,7 +313,7 @@ const STORIES = {
   // A crowd in rows, all facing the same way, except one who has turned to face the other way.
   // Each beat it is someone else who turns away.
   conformity: {
-    weight: 8,
+    weight: 8, maxRings: 6,
     init: (W, H, tall) => ({ rows: tall ? 4 : rndInt(2, 3), cols: tall ? 2 : rndInt(4, 6), dir: sign() }),
     layout(st, b, W, H) {
       const cw = (W * 0.92) / st.cols, ch = (H * 0.9) / st.rows, h = Math.min(cw * 0.98, ch / 1.3);
@@ -293,13 +328,13 @@ const STORIES = {
   // Rising: a column of faces, one above the other. Each beat they all move up a place: the top one
   // drifts away and a new one rises from below.
   ascent: {
-    weight: 4, tall: 3,
+    weight: 4, tall: 3, maxRings: 9,
     init: (W, H, tall) => ({ n: tall ? rndInt(3, 5) : rndInt(2, 3), dir: sign(), cols: tall ? 1 : weighted([1, 2, 3], [40, 40, 20]) }),
     layout(st, b, W, H) {
       const sy = (H * 0.94) / st.n, h = Math.min(sy * 1.02, (W * 0.8) / st.cols / 0.96), out = [];
-      for (let c = 0; c < st.cols; c++) for (let p = 0; p < st.n; p++) {
+      for (let c = 0; c < st.cols; c++) for (let p = 0; p <= st.n; p++) { // p = n: above the screen
         const dir = st.cols > 1 && c % 2 ? -st.dir : st.dir;
-        out.push({ cx: (W * (c + 0.5)) / st.cols, cy: H * 0.97 - sy * (p + 0.5), h, dir, id: `${c}:${b - p}`, slot: p });
+        out.push({ cx: (W * (c + 0.5)) / st.cols, cy: p < st.n ? H * 0.97 - sy * (p + 0.5) : -0.75 * h, h, dir, id: `${c}:${b - p}`, slot: Math.min(p, 6) });
       }
       return out;
     },
@@ -347,11 +382,14 @@ const STORIES = {
   },
 };
 
+let storyCount = 0;
 function newStory(seed) {
   R = makeRng(seed || ((Math.random() * 4294967296) >>> 0));
   const W = width, H = height, tall = W < H;
   const names = Object.keys(STORIES);
-  const name = weighted(names, names.map((n) => STORIES[n].weight * (tall ? (STORIES[n].tall ?? 1) : 1)));
+  // Home: every third story is the simplest one, two people face to face.
+  const home = storyCount++ % 3 === 0;
+  const name = home ? 'faceoff' : weighted(names, names.map((n) => STORIES[n].weight * (tall ? (STORIES[n].tall ?? 1) : 1)));
   story = {
     name, b: 0, phrase: weighted([8, 12, 16, 24], [20, 30, 32, 18]),
     // Palette, after the original's: hue centered on red-magenta, rarely green.
@@ -366,6 +404,7 @@ function newStory(seed) {
     },
   };
   story.st = STORIES[name].init(W, H, tall);
+  if (home) story.st.same = false;
 }
 
 // One beat of the story: everyone in their new place, every face drawn anew.
@@ -373,14 +412,19 @@ function stepStory(morph) {
   const old = cast ? cast.singers.filter((s) => s.life !== 'leave' && s.polys) : [];
   R = makeRng((Math.random() * 4294967296) >>> 0);
   const W = width, H = height;
-  const c = { arrangement: story.name, rootHue: story.rootHue, hueStep: story.hueStep, unison: story.unison, ring: story.ring, singers: [] };
+  const c = { arrangement: story.name, rootHue: story.rootHue, hueStep: story.hueStep, unison: story.unison, ring: story.ring, maxRings: STORIES[story.name].maxRings || 22, singers: [] };
+  const made = [];
   STORIES[story.name].layout(story.st, story.b, W, H).forEach((sl, i) => {
     const s = makeSinger(c, sl.cx, sl.h, sl.dir, {
       head: sl.head || (sl.kind ? Profiles.make(R, sl.kind) : Profiles.make(R)),
       rot: sl.rot || 0, id: sl.id, storyName: story.name, slot: sl.slot ?? i % 7, alphaMul: sl.alpha ?? 1,
+      anchor: !!sl.anchor,
       ...(sl.silent ? { silent: true, join: 0 } : {}),
+      ...(sl.mirror !== undefined ? { mirrorOf: made[sl.mirror], axis: sl.axis, gapMul: made[sl.mirror].gapMul } : {}),
     });
-    s.y = s.yNow = sl.cy - 0.6 * s.h;
+    // (a child is drawn smaller; an anchored face keeps its neck exactly on the waterline)
+    s.y = s.yNow = sl.anchor ? sl.cy + 0.7 * sl.h - NECK_END * s.h : sl.cy - 0.6 * s.h;
+    made.push(s);
     c.singers.push(s);
   });
   finishRoster(c);
@@ -405,7 +449,7 @@ function makeSinger(c, x, h, dir, extra = {}) {
   if (s.head.kind === 'child') s.h *= 0.82;
   s.x = x + dir * 0.43 * s.h; // placed by the middle of the head; s.x is the brow
   s.rowHue = new Float32Array(400);
-  s.rings = Math.max(4, Math.min(22, Math.round(0.75 / (c.ring.gap * s.gapMul)) + 1));
+  s.rings = Math.max(4, Math.min(c.maxRings || 22, Math.round(0.75 / (c.ring.gap * s.gapMul)) + 1));
   s.ready = new Array(s.rings).fill(true); // false while a strand is still on its way to that contour
   s.yNow = s.y; s.alphaNow = 0;
   return s;
@@ -429,7 +473,7 @@ function updateRoster(dt) {
   for (const s of cast.singers) {
     if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / lerp(0.7, 0.15, mood.F)); if (s.fade >= 1) s.life = 'live'; }
     const f = smooth01(s.fade);
-    s.yNow = s.y + (1 - f) * 0.35 * s.h - s.bob * 0.03 * s.h;
+    s.yNow = s.anchor ? s.y : s.y + (1 - f) * 0.35 * s.h - s.bob * 0.03 * s.h; // (anchored faces hold still)
     s.alphaNow = s.alpha * f;
   }
 }
@@ -701,6 +745,7 @@ function listen(dt) {
     s.jx *= 0.8; s.jy *= 0.8;
     const bow = singing ? 0 : -4;
     s.tilt += ((mood.tilt + bow) * s.tiltGain + s.baseTilt - s.tilt) * 0.1;
+    if (s.anchor) s.tilt = 0;
   }
 }
 
@@ -713,7 +758,7 @@ function onBeat() {
   for (const s of cast.singers) {
     s.punch = Math.max(s.punch, 0.5 + 0.5 * F); // the contours jump apart
     if (F > 0.15) s.bob = Math.max(s.bob, 0.4 + 0.6 * F);
-    if (F > 0.45) { s.jx = rnd(-1, 1) * 0.07 * F; s.jy = rnd(-1, 1) * 0.05 * F; } // frantic: heads jolt
+    if (F > 0.45 && !s.anchor) { s.jx = rnd(-1, 1) * 0.07 * F; s.jy = rnd(-1, 1) * 0.05 * F; } // frantic: heads jolt
   }
   bg.beatsLeft -= 1 + mood.F; // frantic music changes the backdrop sooner
   if (bg.beatsLeft <= 0) newBackground();
@@ -752,7 +797,8 @@ function draw() {
   drawBackground(ctx, dt);
 
   const W = width, H = height, D = Math.min(W, H);
-  for (const s of cast.singers) computeRings(s);
+  for (const s of cast.singers) if (!s.mirrorOf) computeRings(s);
+  for (const s of cast.singers) if (s.mirrorOf) computeRings(s);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   for (const s of cast.singers) drawHead(ctx, s);
   updateStrands(ctx, dt);
@@ -770,6 +816,7 @@ function idleListen() {
     s.singing = !s.silent;
     s.eye += ((s.silent ? 1 : 0) - s.eye) * 0.1;
     s.tilt += (s.baseTilt + 3 * Math.sin(t * 0.3) - s.tilt) * 0.05;
+    if (s.anchor) s.tilt = 0;
   }
   mood.level = 0.3;
   mood.F = 0.15;
@@ -835,6 +882,7 @@ function resample(pts, out) {
 // sets the spacing; the rings spread apart on loud notes, jump apart on the beat, and wobble with
 // the singer's band.
 function computeRings(s) {
+  if (s.mirrorOf) return mirrorRings(s);
   const shp = Profiles.shape(s.head, s.open);
   if (!s.polys) s.polys = {
     base: new Float32Array(2 * NPTS),
@@ -859,7 +907,7 @@ function computeRings(s) {
   const ccx = s.x - dir * 0.43 * h + s.jx * h, ccy = s.yNow + 0.6 * h + s.jy * h;
   for (let k = 0; k < rings; k++) {
     const u = k / (rings - 1);
-    const sc = 1 - span * Math.pow(u, ring.curve) + Math.sin(clock * omega + k * 0.9 + s.vph) * wob;
+    const sc = 1 - span * Math.pow(u, ring.curve) + (s.anchor && k === 0 ? 0 : Math.sin(clock * omega + k * 0.9 + s.vph) * wob);
     const out = P.pts[k];
     for (let q = 0; q < NPTS; q++) {
       const hx = c[0] + (base[2 * q] - c[0]) * sc, hy = c[1] + (base[2 * q + 1] - c[1]) * sc;
@@ -873,6 +921,23 @@ function computeRings(s) {
     st.rgb = hsbArr(hue + s.rowHue[k] * 1.5, 85, 92);
     st.w = (k === 0 ? 3.2 : (2.2 - u * 1.1) * thin) * (1 + s.e * 0.6);
     st.a = (k === 0 ? 1 : 0.85 - u * 0.55) * s.alphaNow;
+  }
+}
+
+// A reflection: the face above, mirrored in the waterline, a little fainter.
+function mirrorRings(s) {
+  const U = s.mirrorOf;
+  if (!U.polys) computeRings(U);
+  if (!s.polys) s.polys = {
+    pts: Array.from({ length: s.rings }, () => new Float32Array(2 * NPTS)),
+    style: Array.from({ length: s.rings }, () => ({ rgb: [0, 0, 0], w: 1, a: 1 })),
+  };
+  const a2 = 2 * s.axis, f = smooth01(s.fade);
+  for (let k = 0; k < s.rings; k++) {
+    const src = U.polys.pts[Math.min(k, U.rings - 1)], out = s.polys.pts[k];
+    for (let q = 0; q < NPTS; q++) { out[2 * q] = src[2 * q]; out[2 * q + 1] = a2 - src[2 * q + 1]; }
+    const us = U.polys.style[Math.min(k, U.rings - 1)], st = s.polys.style[k];
+    st.rgb = us.rgb; st.w = us.w; st.a = us.a * s.alphaMul * f;
   }
 }
 

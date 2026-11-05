@@ -43,7 +43,7 @@
     h.lipFwd = child ? u(0.005, 0.025) : u(-0.01, 0.03);           // upper lip forward of the base of the nose
     h.lipFull = elder ? u(0.004, 0.014) : fem ? u(0.016, 0.036) : child ? u(0.012, 0.026) : u(0.008, 0.028);
     h.lipLow = u(0.7, 1.25);                                       // lower lip fullness, relative
-    h.chin = child ? u(-0.08, -0.04) : masc ? u(-0.06, 0.03) : u(-0.09, 0.0); // chin ahead of the brow
+    h.chin = child ? u(-0.08, -0.045) : masc ? u(-0.06, 0.015) : u(-0.085, -0.005); // chin ahead of the brow
     h.sulcus = u(0.008, 0.035);
     h.jaw = child ? u(0.13, 0.18) : masc ? u(0.21, 0.3) : u(0.15, 0.25); // chin to throat
     h.occiput = u(0.0, 0.035);
@@ -100,11 +100,12 @@
     const tipX = G + h.noseProj, tipY = Math.min(yN - 0.034, yN - 0.042 + h.tipDrop * 0.6);
     const nasX = G - h.nasion, nasY = yBr + 0.035;
     const subX = G - 0.012 + h.lipFwd * 0.3;
-    const chinX = G + h.chin;
     const stomX = subX + h.lipFwd * 0.6 + h.lipFull * 0.25;
     const lipTopX = subX + h.lipFwd + h.lipFull * 0.65;
     const lipBotX = subX + h.lipFwd * 0.5 + h.lipFull * 0.55 * h.lipLow - 0.006;
+    const chinX = Math.min(G + h.chin, lipBotX - 0.012); // the chin stays behind the lower lip
     const throatX = chinX - 0.05 - h.jaw;
+    const fold = yS + 0.078;           // the fold under the lower lip
 
     const jaw = (p, amt = 1) => rotateAbout(p, hinge, jawA, amt);
     const lowStom = jaw([stomX - 0.004, yS + 0.003]);
@@ -127,9 +128,11 @@
       inner,                                                                // inside the mouth
       lowStom,                                                              // lower edge of the mouth
       jaw([lipBotX, yS + 0.032]),                                           // lower lip
-      jaw([chinX - h.sulcus, yS + 0.078]),                                  // fold under the lip
-      jaw([chinX, 0.955]),                                                  // chin
-      jaw([chinX - 0.05, 1.0]),                                             // under the chin
+      jaw([chinX - h.sulcus, fold]),                                        // fold under the lip
+      jaw([chinX - 0.004, fold + (1 - fold) * 0.5]),                        // front of the chin
+      jaw([chinX - 0.012, fold + (1 - fold) * 0.82]),                       // the chin rounds under
+      jaw([chinX - 0.034, 0.994]),
+      jaw([chinX - 0.065, 1.006]),                                          // under the chin
       jaw([chinX - 0.05 - h.jaw * 0.55, 1.022], 0.8),                       // under the jaw
       jaw([throatX, 1.055], 0.4),                                           // throat
       [throatX - h.neckSlant * 0.25, 1.35],
