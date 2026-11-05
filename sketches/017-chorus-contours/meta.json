@@ -1,0 +1,9 @@
+{
+  "title": "Chorus contours",
+  "date": "2026-11-05",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "016 with only the contour style: each face is its outline repeated in shrinking rings, on bright pastel backgrounds.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 016-chorus-frenetic"
+}
