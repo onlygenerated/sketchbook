@@ -1,0 +1,9 @@
+{
+  "title": "Chorus (new faces)",
+  "date": "2026-11-05",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "The living Chorus ensemble with heads from the new profile generator: proportionally correct, endlessly varied faces that sing by opening their jaws, drawn in bands, engraving or echo lines.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 012-chorus-ensemble, heads from 013-profiles"
+}

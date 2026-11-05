@@ -19,6 +19,7 @@ sketches/
 shared/
   shell.css, shell.js overlay with title, back link and save-PNG button
   audio.js            Mic helper for audio-reactive sketches
+  profiles.js         algorithmic head-profile generator (see sketches/013-profiles)
 tools/
   new-sketch.mjs      scaffolds a sketch from the template and rebuilds the index
   build-index.mjs     regenerates sketches.json from every meta.json

@@ -1,7 +1,24 @@
 {
   "generated": "2026-11-05",
-  "count": 13,
+  "count": 14,
   "sketches": [
+    {
+      "slug": "014-chorus-new-faces",
+      "number": 14,
+      "title": "Chorus (new faces)",
+      "date": "2026-11-05",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "live"
+      ],
+      "description": "The living Chorus ensemble with heads from the new profile generator: proportionally correct, endlessly varied faces that sing by opening their jaws, drawn in bands, engraving or echo lines.",
+      "status": "wip",
+      "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
+      "path": "sketches/014-chorus-new-faces/",
+      "thumb": null
+    },
     {
       "slug": "013-profiles",
       "number": 13,
