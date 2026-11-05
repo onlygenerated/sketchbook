@@ -22,6 +22,12 @@
 // and slide into place. And a face can turn into another: its contours peel off, travel, and
 // become the new face's contours. Scene changes do this for the whole cast at once.
 //
+// Stories (fourth pass): the faces are always arranged for a reason: a procession, two people face
+// to face, a round passing the song along, generations in a line, a face and its reflection, a
+// crowd with one who turns away. A story lasts a phrase. On every beat it takes one step (the
+// procession walks on, the round turns, the eldest leaves and a child joins) and every face is
+// drawn anew: each person's contours flow from where they were to where they are now.
+//
 // 016 notes:
 // Fork of 015 with a new composition and more life when the music is fast:
 //   - heads are whole and spread through the frame at different heights and sizes, their necks
@@ -104,18 +110,15 @@ const rgba = (rgb, a) => `rgba(${rgb},${a})`;
 // ---------------------------------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------------------------------
-let cast = null;          // the current scene: arrangement, palette, singers
-let castSeed = 1;
-let beatsInPhrase = 0;
+let cast = null;          // the faces of the current beat: story, palette, singers
 let lowRes = false;
 let paused = false;
 let started = false;      // a source has been chosen
 let clock = 0;            // seconds of animation (stops while paused)
 let bands = new Array(12).fill(0);
 let bassAbs = 0;
-let rosterWant = 0, rosterAny = false, rosterWaited = 0; // a roster change waiting for the next beat
+let lastStep = 0;         // when the story last took a step
 let wild = 1.5;           // the wild slider: scales the frenzy (0 calm, 1 as the music says, 2.5 unhinged)
-let rosterCool = 0;       // seconds until the ensemble can grow or shrink again
 
 const mood = { fast: null, slow: null, swell: 0, swellSlow: 0, tilt: 0, hush: 0, hushWas: 0, level: 0, n: 0, beats: [], frenzy: 0, F: 0 };
 const beat = { avg: 0, last: 0, accent: 0 };
@@ -128,108 +131,279 @@ const BRIGHT_SHIFT = 0.3; // centroid shift (in bands) that changes the backgrou
 // ---------------------------------------------------------------------------------------------------
 // Scenes and the ensemble
 // ---------------------------------------------------------------------------------------------------
-function newCast(seed, morph) {
-  const old = morph && cast ? cast.singers.filter((s) => s.life !== 'leave' && s.polys) : [];
-  castSeed = seed || ((Math.random() * 4294967296) >>> 0);
-  R = makeRng(castSeed);
-  const W = width, H = height;
-  const Hh = Math.min(H, W * 1.25);
-  const tall = W < H;
+// ---------------------------------------------------------------------------------------------------
+// Stories: every arrangement has a reason
+// ---------------------------------------------------------------------------------------------------
+// A story is how the faces are arranged and why. It lasts a phrase; on every beat it takes a step
+// and every face is drawn anew. Each slot carries an id for the person in it: when a person moves
+// (the procession walks on, the round turns) their contours travel with them to their new place.
+// A person who leaves the story unravels; a person who arrives is formed from incoming lines.
+let story = null;
+const NECK_END = 1.3; // the neck fades out by here, in head heights below the crown
 
-  const c = {
-    arrangement: weighted(['row', 'duet', 'solo', 'scatter'], [30, 25, 15, 30]),
-    phraseLen: weighted([4, 6, 8, 12], [20, 35, 30, 15]),
-    singers: [],
-  };
-  // Palette, after the original's: hue centered on red-magenta, rarely green.
-  c.rootHue = wrapHue((sign() * skewed(0, 180, 1.25)) - 45);
-  c.hueStep = sign() * skewed(4, 30, 1.5);
-  c.unison = chance(0.1);
-  c.lineStyle = 'echo'; // the only style in this sketch
-  // Contour spacing for the scene: from tight (20 rings) to wide (4), evenly spaced, clustered at
-  // the outline or spreading out, converging on one point of the head.
-  c.ring = {
-    gap: weighted([0.035, 0.055, 0.08, 0.11, 0.15, 0.2], [12, 18, 22, 20, 16, 12]) * rnd(0.85, 1.15),
-    curve: weighted([1, 0.55, 1.8], [45, 30, 25]),
-    center: weighted(['ear', 'mouth', 'eye', 'skull'], [45, 20, 20, 15]),
-  };
-  c.minN = c.arrangement === 'duet' ? 2 : 1;
-  c.maxN = tall ? 4 : c.arrangement === 'scatter' ? 9 : 7;
+// Head sizes and fitting. A head is placed by its center (cx, cy): the crown is 0.6 h above it and
+// the end of the neck 0.7 h below; it is about 0.95 h wide.
+const fitH = (cy, h, H) => Math.max(10, Math.min(h, (cy - H * 0.03) / 0.6, (H * 0.97 - cy) / 0.7));
+const wrapIndex = (i, n) => ((i % n) + n) % n;
 
-  const Hw = Math.min(H, W * 1.1); // head sizes follow the screen's shorter side
-  if (c.arrangement === 'row') {
-    let n = weighted([2, 3, 4, 5, 6], [15, 25, 28, 20, 12]);
-    if (tall) n = Math.min(n, 3);
-    for (let i = 0; i < n; i++) {
-      const u = n === 1 ? 0.4 : i / (n - 1);
-      const h = Hw * rnd(0.3, 0.58);
-      // on a tall screen the row becomes a staggered column, so the heads use the whole height
-      const x = tall ? Math.min(W - 0.2 * h, 0.9 * h + W * (0.02 + (i % 2) * 0.25 + rnd(0, 0.08))) : W * (0.12 + 0.76 * u + rnd(-0.03, 0.03));
-      c.singers.push(makeSinger(c, x, h, 1, { y: placeY(h, tall ? u * 0.9 + rnd(0, 0.1) : rnd(0.1, 1)) }));
-    }
-    if (chance(0.18) && n > 2) { const s = pick(c.singers); s.dir = -1; s.x -= 0.86 * s.h; s.silent = true; }
-  } else if (c.arrangement === 'duet') {
-    const nl = weighted([1, 2], [65, 35]), nr = weighted([1, 2], [65, 35]);
-    for (let i = 0; i < nl; i++) { const h = Hw * rnd(0.36, 0.62); c.singers.push(makeSinger(c, W * (0.14 + 0.2 * (nl === 1 ? 0.6 : i / (nl - 1)) + rnd(-0.03, 0.03)), h, 1, { side: 'L', y: placeY(h, rnd(0.2, 0.8)) })); }
-    for (let i = 0; i < nr; i++) { const h = Hw * rnd(0.36, 0.62); c.singers.push(makeSinger(c, W * (0.86 - 0.2 * (nr === 1 ? 0.6 : i / (nr - 1)) + rnd(-0.03, 0.03)), h, -1, { side: 'R', y: placeY(h, rnd(0.2, 0.8)) })); }
-  } else if (c.arrangement === 'solo') {
-    const hs = Hw * rnd(0.62, 0.8);
-    c.singers.push(makeSinger(c, W * rnd(0.24, 0.4), hs, 1, { join: 0, soloist: true, y: placeY(hs, rnd(0.3, 0.7)) }));
-    if (chance(0.65)) {
-      const n = rndInt(1, 4);
-      for (let i = 0; i < n; i++) {
-        const listen = chance(0.6), h = Hw * rnd(0.15, 0.28);
-        c.singers.push(makeSinger(c, W * (0.62 + 0.32 * (n === 1 ? 0.5 : i / (n - 1)) + rnd(-0.03, 0.03)), h, -1,
-          { silent: listen, join: listen ? 0 : rnd(0.2, 0.5), y: placeY(h, rnd()) }));
+const STORIES = {
+  // A procession: everyone in one straight line, facing the same way, walking on. Each beat the
+  // line steps forward: the one in front walks off and someone new joins at the back.
+  procession: {
+    weight: 14, tall: 0.6,
+    init: (W, H, tall) => ({ n: tall ? rndInt(3, 4) : rndInt(4, 7), dir: sign(), yc: weighted([0.5, 0.4, 0.6], [50, 25, 25]) }),
+    layout(st, b, W, H) {
+      const sx = (W * 0.92) / st.n, cy = H * st.yc;
+      const h = fitH(cy, Math.min(Math.min(H, W * 1.1) * 0.5, sx * 1.05), H);
+      return Array.from({ length: st.n }, (_, p) => {
+        const x = W * 0.04 + sx * (p + 0.5);
+        return { cx: st.dir > 0 ? x : W - x, cy, h, dir: st.dir, id: b - p, slot: p };
+      });
+    },
+  },
+  // Generations: a child, grown-ups and an elder in one line, standing on the same ground, facing
+  // the same way. Each beat everyone moves on a step: the elder at the front walks on and is gone,
+  // and a child joins at the back.
+  lineage: {
+    weight: 10, tall: 0.6,
+    init: (W, H, tall) => ({ n: tall ? 3 : rndInt(4, 5), dir: sign(), ground: rnd(0.78, 0.92), mid: [pick(['fem', 'masc', 'adult']), pick(['fem', 'masc', 'adult']), pick(['fem', 'masc'])] }),
+    layout(st, b, W, H) {
+      const sx = (W * 0.92) / st.n, hMax = Math.min(Math.min(H, W * 1.1) * 0.62, sx * 1.15, (H * st.ground - H * 0.04) / 1.3);
+      return Array.from({ length: st.n }, (_, p) => {
+        const age = p / (st.n - 1); // 0 the child at the back, 1 the elder in front
+        const kind = p === 0 ? 'child' : p === st.n - 1 ? 'elder' : st.mid[(p - 1) % 3];
+        const h = hMax * (0.7 + 0.3 * age) / (kind === 'child' ? 0.82 : 1);
+        const x = W * 0.04 + sx * (p + 0.5), hs = kind === 'child' ? h * 0.82 : h;
+        return { cx: st.dir > 0 ? x : W - x, cy: H * st.ground - 0.7 * hs, h, dir: st.dir, kind, id: b - p, slot: p };
+      });
+    },
+  },
+  // Face to face: two people close together, a conversation or a quarrel. They take turns: the one
+  // speaking leans in a little larger. Sometimes it is one person facing their own double.
+  faceoff: {
+    weight: 12,
+    init: () => ({ same: chance(0.3), yc: rnd(0.45, 0.55), turns: weighted([1, 2], [60, 40]) }),
+    layout(st, b, W, H) {
+      const cy = H * st.yc, h0 = fitH(cy, Math.min(Math.min(H, W * 1.1) * 0.66, (W * 0.92) / 2.0), H);
+      const head = st.same ? Profiles.make(R) : null, speaker = Math.floor(b / st.turns) % 2;
+      return [0, 1].map((i) => {
+        const h = h0 * (i === speaker ? 1.06 : 0.94);
+        return { cx: W / 2 + (i ? 1 : -1) * 0.52 * h0, cy, h, dir: i ? -1 : 1, id: i ? 'R' : 'L', slot: i ? 5 : 1, head, silent: i !== speaker };
+      });
+    },
+  },
+  // Call and response: two small choirs face each other across the middle and answer each other,
+  // a few beats each.
+  choirs: {
+    weight: 8,
+    init: (W, H, tall) => ({ m: tall ? 3 : rndInt(2, 3), turns: weighted([2, 4], [50, 50]) }),
+    layout(st, b, W, H) {
+      const m = st.m, sy = (H * 0.9) / m, h = Math.min(sy / 1.25, W * 0.32);
+      const calling = Math.floor(b / st.turns) % 2, out = [];
+      for (const side of [0, 1]) for (let r = 0; r < m; r++) {
+        const sing = side === calling;
+        out.push({ cx: side ? W * 0.74 : W * 0.26, cy: H * 0.05 + sy * (r + 0.5) - 0.05 * h, h: h * (sing ? 1.05 : 0.92), dir: side ? -1 : 1, id: `${side}${r}`, slot: side * 4 + r, silent: !sing });
       }
-    }
-  } else { // scatter: a crowd of heads across the whole screen, facing every way
-    const n = tall ? rndInt(3, 4) : rndInt(4, 8);
-    for (let i = 0; i < n; i++) c.singers.push(scatterSinger(c, W, H, Hw, c.singers));
-  }
-  c.baseCount = c.singers.length;
-  for (const s of c.singers) { s.fade = 0.45; s.life = 'enter'; } // a new scene rises into view
+      return out;
+    },
+  },
+  // A round: voices in a circle, each facing the back of the next, passing the song along. Each
+  // beat the circle turns one place.
+  round: {
+    weight: 12,
+    init: (W, H, tall) => ({ n: tall ? rndInt(4, 6) : rndInt(5, 8), dir: sign(), pairs: chance(0.25) }),
+    layout(st, b, W, H) {
+      const D = Math.min(W, H), n = st.n;
+      const h = Math.min(D * 0.3, (2 * Math.PI * 0.46 * D) / (0.95 * n + 4.4)), R0 = 0.46 * D - 0.7 * h;
+      return Array.from({ length: n }, (_, j) => {
+        const th = -Math.PI / 2 + (2 * Math.PI * j) / n;
+        // in "pairs" neighbours face each other instead: a circle of conversations, which holds still
+        const dir = st.pairs ? (j % 2 ? -1 : 1) : st.dir;
+        return { cx: W / 2 + R0 * Math.cos(th), cy: H / 2 + R0 * Math.sin(th), h, dir, rot: th + Math.PI / 2,
+          id: st.pairs ? j : wrapIndex(j - st.dir * b, n), slot: j % 7 };
+      });
+    },
+  },
+  // A council: people seated around a table, seen from the side; each half of the ring turns to
+  // the middle. Those at the far side are smaller. One speaks at a time, and the word goes round.
+  council: {
+    weight: 8, tall: 0.5,
+    init: (W, H, tall) => ({ n: tall ? rndInt(4, 5) : rndInt(5, 8), order: chance(0.6) ? 1 : 0, spin: rnd(0, 6.28) }),
+    layout(st, b, W, H) {
+      const n = st.n, rx = W * 0.33, ry = H * 0.17, cy0 = H * 0.5;
+      const h0 = Math.min(Math.min(H, W * 1.1) * 0.42, (2 * rx) / (n / 2 + 0.6));
+      const speaker = st.order ? b % n : Math.floor(Math.random() * n);
+      return Array.from({ length: n }, (_, j) => {
+        const th = st.spin + (2 * Math.PI * j) / n, depth = (Math.sin(th) + 1) / 2; // 0 far side, 1 near side
+        const cx = W / 2 + rx * Math.cos(th), h = fitH(cy0, h0 * (0.7 + 0.3 * depth), H) * (j === speaker ? 1.1 : 0.95);
+        return { cx, cy: cy0 + ry * Math.sin(th), h, dir: cx < W / 2 ? 1 : -1, id: j, slot: j % 7, silent: j !== speaker, alpha: 0.75 + 0.25 * depth };
+      });
+    },
+  },
+  // A performer and an audience: one large face, and rows of small faces turned toward it,
+  // mostly listening; now and then one of them sings back.
+  audience: {
+    weight: 8,
+    init: (W, H, tall) => ({ side: sign(), rows: tall ? 3 : rndInt(2, 3), cols: tall ? 2 : rndInt(3, 5) }),
+    layout(st, b, W, H) {
+      const pc = st.side < 0 ? W * 0.22 : W * 0.78, cy = H * 0.5;
+      const hp = fitH(cy, Math.min(Math.min(H, W * 1.1) * 0.62, W * 0.4), H);
+      const x0 = st.side < 0 ? W * 0.47 : W * 0.03, aw = W * 0.5, cw = aw / st.cols, ch = (H * 0.84) / st.rows;
+      const ha = Math.min(cw * 0.95, ch / 1.3), back = Math.floor(Math.random() * st.rows * st.cols);
+      const out = [{ cx: pc, cy, h: hp, dir: -st.side, id: 'P', slot: 0 }];
+      for (let r = 0; r < st.rows; r++) for (let c = 0; c < st.cols; c++) {
+        const k = r * st.cols + c, stagger = r % 2 ? 0.5 : 0;
+        out.push({ cx: x0 + cw * Math.min(st.cols - 0.5, c + 0.25 + stagger), cy: H * 0.08 + ch * (r + 0.5), h: ha, dir: st.side, id: `a${k}`, slot: 3 + (r % 3), silent: k !== back });
+      }
+      return out;
+    },
+  },
+  // A face and its reflection, as in still water: the same face upside down beneath it. Sometimes a
+  // few people stand along the shore.
+  reflection: {
+    weight: 9,
+    init: (W, H, tall) => ({ n: tall ? 1 : weighted([1, 2, 3], [50, 30, 20]), horizon: rnd(0.48, 0.56), dir: sign(), facing: chance(0.3) }),
+    layout(st, b, W, H) {
+      const sx = (W * 0.9) / st.n, hz = H * st.horizon;
+      const h = Math.min(Math.min(hz, H - hz) * 0.94 / 1.3, sx * 0.95), out = [];
+      for (let i = 0; i < st.n; i++) {
+        const head = Profiles.make(R);
+        const dir = st.facing && st.n > 1 ? (i < st.n / 2 ? 1 : -1) : st.dir, cx = W * 0.05 + sx * (i + 0.5);
+        out.push({ cx, cy: hz - 0.7 * h, h, dir, head, id: `u${i}`, slot: i * 2 });
+        out.push({ cx, cy: hz + 0.7 * h, h, dir: -dir, rot: Math.PI, head, id: `d${i}`, slot: i * 2, alpha: 0.55 });
+      }
+      return out;
+    },
+  },
+  // A crowd in rows, all facing the same way, except one who has turned to face the other way.
+  // Each beat it is someone else who turns away.
+  conformity: {
+    weight: 8,
+    init: (W, H, tall) => ({ rows: tall ? 4 : rndInt(2, 3), cols: tall ? 2 : rndInt(4, 6), dir: sign() }),
+    layout(st, b, W, H) {
+      const cw = (W * 0.92) / st.cols, ch = (H * 0.9) / st.rows, h = Math.min(cw * 0.98, ch / 1.3);
+      const odd = Math.floor(Math.random() * st.rows * st.cols), out = [];
+      for (let r = 0; r < st.rows; r++) for (let c = 0; c < st.cols; c++) {
+        const k = r * st.cols + c;
+        out.push({ cx: W * 0.04 + cw * (c + 0.5), cy: H * 0.05 + ch * (r + 0.5) - 0.05 * h, h, dir: k === odd ? -st.dir : st.dir, id: k, slot: k === odd ? 6 : 2 + (r % 2) });
+      }
+      return out;
+    },
+  },
+  // Rising: a column of faces, one above the other. Each beat they all move up a place: the top one
+  // drifts away and a new one rises from below.
+  ascent: {
+    weight: 4, tall: 3,
+    init: (W, H, tall) => ({ n: tall ? rndInt(3, 5) : rndInt(2, 3), dir: sign(), cols: tall ? 1 : weighted([1, 2, 3], [40, 40, 20]) }),
+    layout(st, b, W, H) {
+      const sy = (H * 0.94) / st.n, h = Math.min(sy * 1.02, (W * 0.8) / st.cols / 0.96), out = [];
+      for (let c = 0; c < st.cols; c++) for (let p = 0; p < st.n; p++) {
+        const dir = st.cols > 1 && c % 2 ? -st.dir : st.dir;
+        out.push({ cx: (W * (c + 0.5)) / st.cols, cy: H * 0.97 - sy * (p + 0.5), h, dir, id: `${c}:${b - p}`, slot: p });
+      }
+      return out;
+    },
+  },
+  // Small groups in conversation, as at a party: pairs facing each other, and a trio where two
+  // turn to one. Within each group they take turns.
+  clusters: {
+    weight: 7,
+    init: (W, H, tall) => {
+      const g = tall ? 2 : rndInt(2, 3), groups = [];
+      for (let i = 0; i < g; i++) groups.push({ size: chance(0.6) ? 2 : 3, x: (i + 0.5) / g + rnd(-0.04, 0.04), y: rnd(0.35, 0.65), flip: sign() });
+      return { groups };
+    },
+    layout(st, b, W, H) {
+      const g = st.groups.length, out = [];
+      st.groups.forEach((G, i) => {
+        const cy = H * G.y, h = fitH(cy, Math.min((W / g) * 0.42, H * 0.5), H), cx = W * G.x;
+        const speaker = (b + i) % G.size;
+        const members = G.size === 2 ? [[-0.58, 1], [0.58, -1]] : [[-0.5, 1], [0.55, -1], [-0.9, 1]];
+        members.forEach(([dx, d], j) => out.push({ cx: cx + dx * h * G.flip, cy: cy + (j === 2 ? 0.25 * h : 0), h: h * (j === speaker ? 1.05 : 0.9) * (j === 2 ? 0.85 : 1), dir: d * G.flip, id: `${i}.${j}`, slot: i * 2 + j, silent: j !== speaker }));
+      });
+      return out;
+    },
+  },
+  // Strangers in a crowd: everyone facing their own way, nobody meeting; each beat they have all
+  // moved somewhere else.
+  strangers: {
+    weight: 5,
+    init: (W, H, tall) => ({ n: tall ? rndInt(3, 4) : rndInt(4, 7) }),
+    layout(st, b, W, H) {
+      const Hw = Math.min(H, W * 1.1), out = [];
+      for (let j = 0; j < st.n; j++) {
+        let best = null, bestD = -1;
+        for (let k = 0; k < 12; k++) {
+          const h = Hw * rnd(0.22, 0.42), cx = W * rnd(0.1, 0.9), cy = H * rnd(0.25, 0.72);
+          const hh = fitH(cy, h, H);
+          let d = 1e9;
+          for (const o of out) d = Math.min(d, Math.hypot(cx - o.cx, cy - o.cy) / (hh + o.h));
+          if (d > bestD) { bestD = d; best = { cx, cy, h: hh }; }
+        }
+        out.push({ ...best, dir: sign(), id: j, slot: j % 7 });
+      }
+      return out;
+    },
+  },
+};
+
+function newStory(seed) {
+  R = makeRng(seed || ((Math.random() * 4294967296) >>> 0));
+  const W = width, H = height, tall = W < H;
+  const names = Object.keys(STORIES);
+  const name = weighted(names, names.map((n) => STORIES[n].weight * (tall ? (STORIES[n].tall ?? 1) : 1)));
+  story = {
+    name, b: 0, phrase: weighted([8, 12, 16, 24], [20, 30, 32, 18]),
+    // Palette, after the original's: hue centered on red-magenta, rarely green.
+    rootHue: wrapHue((sign() * skewed(0, 180, 1.25)) - 45),
+    hueStep: sign() * skewed(4, 30, 1.5), unison: chance(0.1),
+    // Contour spacing: from tight (20 rings) to wide (4), evenly spaced, clustered at the outline
+    // or spreading out, converging on one point of the head.
+    ring: {
+      gap: weighted([0.035, 0.055, 0.08, 0.11, 0.15, 0.2], [12, 18, 22, 20, 16, 12]) * rnd(0.85, 1.15),
+      curve: weighted([1, 0.55, 1.8], [45, 30, 25]),
+      center: weighted(['ear', 'mouth', 'eye', 'skull'], [45, 20, 20, 15]),
+    },
+  };
+  story.st = STORIES[name].init(W, H, tall);
+}
+
+// One beat of the story: everyone in their new place, every face drawn anew.
+function stepStory(morph) {
+  const old = cast ? cast.singers.filter((s) => s.life !== 'leave' && s.polys) : [];
+  R = makeRng((Math.random() * 4294967296) >>> 0);
+  const W = width, H = height;
+  const c = { arrangement: story.name, rootHue: story.rootHue, hueStep: story.hueStep, unison: story.unison, ring: story.ring, singers: [] };
+  STORIES[story.name].layout(story.st, story.b, W, H).forEach((sl, i) => {
+    const s = makeSinger(c, sl.cx, sl.h, sl.dir, {
+      head: sl.head || (sl.kind ? Profiles.make(R, sl.kind) : Profiles.make(R)),
+      rot: sl.rot || 0, id: sl.id, storyName: story.name, slot: sl.slot ?? i % 7, alphaMul: sl.alpha ?? 1,
+      ...(sl.silent ? { silent: true, join: 0 } : {}),
+    });
+    s.y = s.yNow = sl.cy - 0.6 * s.h;
+    c.singers.push(s);
+  });
   finishRoster(c);
   cast = c;
-  if (morph) morphCast(old, c.singers);
-  beatsInPhrase = 0;
+  story.b++;
+  lastStep = clock;
   newDetail();
-}
-
-// Where a head of height h can sit so all of it (crown to the end of the neck) is on screen.
-const NECK_END = 1.3; // the neck fades out by here, in head heights below the crown
-function placeY(h, u) {
-  const H = height, lo = H * 0.04, hi = Math.max(lo, H - h * NECK_END - H * 0.02);
-  return lerp(lo, hi, clamp01(u));
-}
-
-// A head for the scattered crowd: of a dozen random spots, the one furthest from everyone else.
-function scatterSinger(c, W, H, Hw, others) {
-  let best = null, bestD = -1;
-  for (let k = 0; k < 12; k++) {
-    const h = Hw * rnd(0.2, 0.45), x = W * rnd(0.08, 0.92), y = placeY(h, rnd());
-    let d = 1e9;
-    for (const o of others) if (o.life !== 'leave') d = Math.min(d, Math.hypot(x - (o.x - o.dir * 0.43 * o.h), (y + 0.55 * h) - (o.y + 0.55 * o.h)) / (h + o.h));
-    if (d > bestD) { bestD = d; best = { x, h, y }; }
-  }
-  const dir = (best.x < W / 2 ? 1 : -1) * (chance(0.2) ? -1 : 1);
-  return makeSinger(c, best.x, best.h, dir, { y: best.y });
+  if (morph && old.length) morphCast(old, c.singers);
+  else for (const s of c.singers) { s.fade = 0.45; s.life = 'enter'; } // a new scene rises into view
 }
 
 function makeSinger(c, x, h, dir, extra = {}) {
-  const H = height;
   const s = {
-    x, h, dir, y: placeY(h, rnd()),
-    head: Profiles.make(R),
+    x, h, dir, y: 0,
     slot: rndInt(0, 6), hueOffset: 0, join: chance(0.3) ? rnd(0.15, 0.55) : 0, silent: false,
     tiltGain: rnd(0.6, 1.25), baseTilt: rnd(-3, 3), alpha: 1, band: 0,
     e: 0, avg: 0.2, open: 0, eye: 0, tilt: 0, fade: 0, life: 'enter', vib: 0, bob: 0, vph: rnd(0, 6.28),
-    gapMul: rnd(0.75, 1.35), punch: 0, jx: 0, jy: 0,
+    gapMul: rnd(0.75, 1.35), punch: 0, jx: 0, jy: 0, rot: 0,
     ...extra,
   };
-  const kind = s.head.kind;
-  if (kind === 'child') s.h *= 0.82;
-  s.x = x + dir * 0.43 * s.h; // scenes place a singer by the middle of the head; s.x is the brow
+  if (!s.head) s.head = Profiles.make(R);
+  if (s.head.kind === 'child') s.h *= 0.82;
+  s.x = x + dir * 0.43 * s.h; // placed by the middle of the head; s.x is the brow
   s.rowHue = new Float32Array(400);
   s.rings = Math.max(4, Math.min(22, Math.round(0.75 / (c.ring.gap * s.gapMul)) + 1));
   s.ready = new Array(s.rings).fill(true); // false while a strand is still on its way to that contour
@@ -247,145 +421,22 @@ function finishRoster(c) {
   for (const s of c.singers) s.hueOffset = c.unison ? 0 : (s.slot - 3) * c.hueStep;
   c.singers.sort((a, b) => a.h - b.h); // draw small (far) first
   const hMax = Math.max(...c.singers.map((s) => s.h));
-  for (const s of c.singers) s.alpha = 0.55 + 0.45 * Math.pow(s.h / hMax, 0.8);
+  for (const s of c.singers) s.alpha = (0.55 + 0.45 * Math.pow(s.h / hMax, 0.8)) * (s.alphaMul ?? 1);
 }
 
-// Where a new face goes: the widest gap in its part of the stage.
-function widestGap(xs, lo, hi) {
-  const pts = [lo, ...xs.filter((x) => x > lo && x < hi).sort((a, b) => a - b), hi];
-  let best = 0, at = (lo + hi) / 2;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const g = pts[i + 1] - pts[i];
-    if (g > best) { best = g; at = (pts[i] + pts[i + 1]) / 2; }
-  }
-  return at + (R() - 0.5) * best * 0.3;
-}
-
-function addSinger(noStrands) {
-  const c = cast;
-  const live = c.singers.filter((s) => s.life !== 'leave');
-  if (live.length >= c.maxN) return false;
-  R = makeRng((Math.random() * 4294967296) >>> 0);
-  const W = width, H = height;
-  const Hw = Math.min(H, W * 1.1);
-  let s;
-  if (c.arrangement === 'row') {
-    const x = widestGap(live.map((q) => q.x - q.dir * 0.43 * q.h), W * 0.06, W * 0.94);
-    s = makeSinger(c, x, Hw * rnd(0.3, 0.58), 1);
-    if (chance(0.12) && live.length > 1) { s.dir = -1; s.x -= 0.86 * s.h; s.silent = true; }
-  } else if (c.arrangement === 'duet') {
-    const nl = live.filter((q) => q.side === 'L').length, nr = live.filter((q) => q.side === 'R').length;
-    const side = nl === nr ? (chance(0.5) ? 'L' : 'R') : (nl < nr ? 'L' : 'R');
-    const [lo, hi] = side === 'L' ? [W * 0.06, W * 0.4] : [W * 0.6, W * 0.94];
-    const h = Hw * rnd(0.3, 0.6);
-    s = makeSinger(c, widestGap(live.filter((q) => q.side === side).map((q) => q.x - q.dir * 0.43 * q.h), lo, hi), h, side === 'L' ? 1 : -1, { side, y: placeY(h, rnd(0.15, 0.85)) });
-  } else if (c.arrangement === 'solo') {
-    const listen = chance(0.5);
-    s = makeSinger(c, widestGap(live.filter((q) => !q.soloist).map((q) => q.x - q.dir * 0.43 * q.h), W * 0.56, W * 0.97), Hw * rnd(0.15, 0.28), -1,
-      { silent: listen, join: listen ? 0 : rnd(0.1, 0.4) });
-  } else {
-    s = scatterSinger(c, W, H, Hw, live);
-  }
-  const r = makeRng((Math.random() * 4294967296) >>> 0);
-  fillRowHues(s, r);
-  s.punch = 1;
-  c.singers.push(s);
-  finishRoster(c);
-  if (!noStrands && strands.length + s.rings <= STRAND_CAP) formStrands(s);
-  return s;
-}
-
-// Who leaves: the quiet ones first. With anyone, the cast may shrink below its minimum (used when a
-// face turns into another).
-function chooseLeaver(anyone) {
-  const c = cast;
-  const live = c.singers.filter((s) => s.life !== 'leave' && !s.soloist);
-  if (!live.length) return null;
-  if (!anyone) {
-    if (c.singers.filter((s) => s.life !== 'leave').length <= c.minN) return null;
-    if (c.arrangement === 'duet') { // keep at least one singer on each side
-      for (const side of ['L', 'R']) {
-        if (live.filter((q) => q.side === side).length <= 1) {
-          for (let i = live.length - 1; i >= 0; i--) if (live[i].side === side) live.splice(i, 1);
-        }
-      }
-      if (!live.length) return null;
-    }
-  }
-  live.sort((a, b) => (a.singing ? 1 : 0) - (b.singing ? 1 : 0) || a.e - b.e);
-  return live[Math.min(live.length - 1, Math.floor(Math.random() * Math.min(2, live.length)))];
-}
-
-function detach(s) {
-  const i = cast.singers.indexOf(s);
-  if (i >= 0) cast.singers.splice(i, 1);
-  finishRoster(cast);
-}
-
-function removeSinger() {
-  const s = chooseLeaver(false);
-  if (!s) return false;
-  if (s.polys && strands.length + s.rings <= STRAND_CAP) { detach(s); unravel(s); } // it unravels
-  else { s.life = 'leave'; finishRoster(cast); } // too busy: it just fades
-  return true;
-}
-
-// One face turns into another somewhere else: its contours peel off and become the new face's.
-function morphSinger() {
-  const s = chooseLeaver(true);
-  if (!s || !s.polys || strands.length + 2 * s.rings > STRAND_CAP) return false;
-  detach(s);
-  const n = addSinger(true);
-  if (n) morphStrands(s, n); else unravel(s);
-  return true;
-}
-
-// Every frame: faces rise in and sink away; the ensemble follows the music's swell.
+// Every frame: faces fade in (when they weren't formed from strands) and bob on the beat.
 function updateRoster(dt) {
-  const c = cast;
-  for (const s of c.singers) {
-    const ft = lerp(0.7, 0.08, mood.F); // fast music: heads pop in and out
-    if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / ft); if (s.fade >= 1) s.life = 'live'; }
-    else if (s.life === 'leave') s.fade -= dt / ft;
-  }
-  if (c.singers.some((s) => s.life === 'leave' && s.fade <= 0)) {
-    c.singers = c.singers.filter((s) => !(s.life === 'leave' && s.fade <= 0));
-  }
-  for (const s of c.singers) {
+  for (const s of cast.singers) {
+    if (s.life === 'enter') { s.fade = Math.min(1, s.fade + dt / lerp(0.7, 0.15, mood.F)); if (s.fade >= 1) s.life = 'live'; }
     const f = smooth01(s.fade);
-    s.yNow = s.y + (1 - f) * 0.35 * s.h - s.bob * 0.03 * s.h; // rise in, and bob on the beat
+    s.yNow = s.y + (1 - f) * 0.35 * s.h - s.bob * 0.03 * s.h;
     s.alphaNow = s.alpha * f;
   }
-  rosterCool -= dt;
-  if (!started) return;
-  if (rosterWant) { // waiting for a beat; if none comes, go ahead anyway
-    rosterWaited += dt;
-    if (rosterWaited > 2.5) doRoster();
-    return;
-  }
-  if (rosterCool > 0) return;
-  const live = c.singers.filter((s) => s.life !== 'leave').length;
-  const target = rosterTarget();
-  if (live !== target) { rosterWant = live < target ? 1 : -1; rosterAny = false; rosterWaited = 0; }
 }
 
-function rosterTarget() {
-  const c = cast;
-  return Math.max(c.minN, Math.min(c.maxN, Math.round(c.baseCount + mood.swellSlow * 2.5)));
-}
-
-// Carry out the waiting change (on a beat, usually).
-function doRoster() {
-  const ok = rosterWant > 0 ? addSinger() || (rosterAny && removeSinger()) : removeSinger() || (rosterAny && addSinger());
-  rosterWant = 0;
-  if (ok) rosterCool = rnd(1.5, 3) * (1 - 0.7 * mood.F);
-  return ok;
-}
-
-// A noticeable change in the sound: someone joins or someone leaves, on the next beat.
+// A noticeable change in the sound: the story ends within a couple of beats.
 function onMusicChange() {
-  const grow = mood.swell > 0.2 ? 0.75 : mood.swell < -0.2 ? 0.25 : 0.5;
-  rosterWant = Math.random() < grow ? 1 : -1; rosterAny = true; rosterWaited = 0;
+  story.phrase = Math.min(story.phrase, story.b + 2);
 }
 
 // Re-rolled on every beat: each row's color.
@@ -579,7 +630,7 @@ function listen(dt) {
   const hushTarget = lvl < 0.04 ? 1 : clamp01((-mood.swell - 0.55) * 2.2);
   mood.hush += (hushTarget - mood.hush) * (hushTarget > mood.hush ? 0.06 : 0.12);
   // The music coming back after a hush resets the whole scene.
-  if (mood.hushWas > 0.6 && mood.hush < 0.25) { newCast(0, true); newBackground(); }
+  if (mood.hushWas > 0.6 && mood.hush < 0.25) { newStory(); stepStory(true); newBackground(); }
   mood.hushWas = mood.hush > 0.6 ? Math.max(mood.hushWas, mood.hush) : (mood.hush < 0.25 ? 0 : mood.hushWas);
 
   // Changes in the sound: compare the spectrum's shape over the last ~0.3 s with the last ~4 s.
@@ -596,7 +647,7 @@ function listen(dt) {
   change.cool -= dt; change.majorCool -= dt; change.bgCool -= dt;
   if (change.novelty > MAJOR_AT && change.majorCool <= 0) {
     change.majorCool = 20; change.cool = 3; change.bgCool = 5;
-    newCast(0, true); newBackground();
+    newStory(); stepStory(true); newBackground();
   } else if (change.novelty > CHANGE_AT && change.cool <= 0) {
     change.cool = rnd(1.2, 2.5);
     onMusicChange();
@@ -655,37 +706,17 @@ function listen(dt) {
 
 function onBeat() {
   const F = mood.F;
-  newDetail();
   bgBeat();
+  // Every beat the story takes a step and every face is drawn anew.
+  if (story.b >= story.phrase * (1 - 0.3 * F)) newStory();
+  stepStory(true);
   for (const s of cast.singers) {
     s.punch = Math.max(s.punch, 0.5 + 0.5 * F); // the contours jump apart
     if (F > 0.15) s.bob = Math.max(s.bob, 0.4 + 0.6 * F);
-    if (F > 0.45) { // frantic: heads jolt, and now and then one turns to face the other way
-      s.jx = rnd(-1, 1) * 0.07 * F; s.jy = rnd(-1, 1) * 0.05 * F;
-      if (!s.soloist && cast.arrangement !== 'duet' && chance(0.1 * F)) {
-        const cx = s.x - s.dir * 0.43 * s.h;
-        s.dir = -s.dir; s.x = cx + s.dir * 0.43 * s.h;
-      }
-    }
+    if (F > 0.45) { s.jx = rnd(-1, 1) * 0.07 * F; s.jy = rnd(-1, 1) * 0.05 * F; } // frantic: heads jolt
   }
-  // Heads join and leave on the beat: a waiting change happens now, and the faster the music the
-  // more often someone pops in or out (sometimes both at once).
-  if (rosterWant) doRoster();
-  else if (started && rosterCool <= 0.5 && chance(0.05 + 0.5 * F)) {
-    const live = cast.singers.filter((s) => s.life !== 'leave').length, target = rosterTarget();
-    if (F > 0.5 && chance(0.6 * F)) morphSinger(); // fast music: a face turns into another
-    else {
-      rosterWant = chance(live < target ? 0.75 : live > target ? 0.25 : 0.5) ? 1 : -1; rosterAny = true;
-      doRoster();
-    }
-    rosterCool = Math.min(rosterCool, 0.3);
-  } else if (started && chance(0.04 + 0.12 * F)) morphSinger(); // now and then, even when calm
   bg.beatsLeft -= 1 + mood.F; // frantic music changes the backdrop sooner
   if (bg.beatsLeft <= 0) newBackground();
-  if (++beatsInPhrase >= cast.phraseLen * (1 - 0.5 * mood.F)) {
-    if (chance(0.75)) newCast(0, true); // a new arrangement; the background keeps its own timing
-    else beatsInPhrase = 0;
-  }
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -696,14 +727,15 @@ function setup() {
   pixelDensity(Math.min(2, displayDensity()));
   frameRate(30); // like the original's 32
   cnv.elt.addEventListener('click', () => { if (started) togglePause(); });
-  newCast(20261104);
+  newStory(20261104);
+  stepStory(false);
   newBackground();
   setupSourcePicker();
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  if (cast) newCast(castSeed); // re-lay out the same scene for the new size
+  if (story) stepStory(true); // re-lay out the story for the new size
 }
 
 function draw() {
@@ -713,6 +745,7 @@ function draw() {
   clock += dt;
   if (started) listen(dt);
   else idleListen();
+  if (clock - lastStep > (started ? 2.5 : 1.6) && mood.hush < 0.5) stepStory(true); // no beat: a slower step
   updateRoster(dt);
 
   const ctx = drawingContext;
@@ -821,6 +854,9 @@ function computeRings(s) {
   const h = s.h, dir = s.dir;
   const pv = singerPivot(s), ang = -dir * s.tilt * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
   const ox = s.x - dir * Profiles.G * h + s.jx * h, oy = s.yNow + s.jy * h;
+  // a story can turn a head right round (a ring of faces, a reflection), about its middle
+  const rot = s.rot, cr = Math.cos(rot), sr = Math.sin(rot);
+  const ccx = s.x - dir * 0.43 * h + s.jx * h, ccy = s.yNow + 0.6 * h + s.jy * h;
   for (let k = 0; k < rings; k++) {
     const u = k / (rings - 1);
     const sc = 1 - span * Math.pow(u, ring.curve) + Math.sin(clock * omega + k * 0.9 + s.vph) * wob;
@@ -828,8 +864,10 @@ function computeRings(s) {
     for (let q = 0; q < NPTS; q++) {
       const hx = c[0] + (base[2 * q] - c[0]) * sc, hy = c[1] + (base[2 * q + 1] - c[1]) * sc;
       const dx = ox + dir * h * hx - pv.x, dy = oy + h * hy - pv.y;
-      out[2 * q] = pv.x + dx * ca - dy * sa;
-      out[2 * q + 1] = pv.y + dx * sa + dy * ca;
+      let X = pv.x + dx * ca - dy * sa, Y = pv.y + dx * sa + dy * ca;
+      if (rot) { const ex = X - ccx, ey = Y - ccy; X = ccx + ex * cr - ey * sr; Y = ccy + ex * sr + ey * cr; }
+      out[2 * q] = X;
+      out[2 * q + 1] = Y;
     }
     const st = P.style[k];
     st.rgb = hsbArr(hue + s.rowHue[k] * 1.5, 85, 92);
@@ -862,7 +900,7 @@ function drawHead(ctx, s) {
 // its length as it goes (stretching toward the target's length), so it peels off from its leading
 // end and noodles along behind it.
 const strands = [];
-const STRAND_CAP = 500;
+const STRAND_CAP = 700;
 const track = { x: new Float64Array(1200), y: new Float64Array(1200), c: new Float64Array(1200), n: 0 };
 
 function polyLen(a, n = a.length / 2) {
@@ -885,11 +923,14 @@ function exitPoint(x, y, th) {
 function newStrand(prefix, style, o) {
   const st = {
     prefix, L0: polyLen(prefix), rgb: style.rgb.slice(), w: style.w, a: style.a,
-    t: 0, T: o.T, easeIn: !!o.easeIn, target: o.target || null, rev: !!o.rev,
+    t: 0, T: o.T, easeIn: !!o.easeIn, target: o.target || null, rev: !!o.rev, lerp: !!o.lerp,
     B: o.B || null, dB: o.dB || null,
     a1: rnd(0.25, 0.75), a2: rnd(0.25, 0.75), amp: rnd(0.04, 0.18) * (0.7 + mood.F), freq: rnd(0.8, 3.2), ph: rnd(0, 6.28),
     pts: new Float32Array(2 * NPTS), tp: o.target ? new Float32Array(2 * NPTS) : null,
   };
+  // until its first frame, it sits where it starts
+  if (prefix.length === 2 * NPTS) st.pts.set(prefix);
+  else for (let q = 0; q < NPTS; q++) { st.pts[2 * q] = prefix[prefix.length - 2]; st.pts[2 * q + 1] = prefix[prefix.length - 1]; }
   strands.push(st);
   return st;
 }
@@ -901,22 +942,34 @@ function flowOff(prefix, style, th, T) {
   return newStrand(prefix, style, { B, dB: [Math.cos(th), Math.sin(th)], T, easeIn: true });
 }
 
+const beatGap = () => { const b = mood.beats; return b.length >= 3 ? (b[b.length - 1] - b[0]) / (b.length - 1) / 1000 : 0.8; };
 const flowT = () => lerp(2.6, 1.1, mood.F) * rnd(0.8, 1.3);
-const formT = () => lerp(2.3, 0.8, mood.F) * rnd(0.8, 1.25);
+// lines arrive in about a beat and a half (and never slower than the music allows)
+const formT = () => Math.max(0.3, Math.min(lerp(2.3, 0.8, mood.F), beatGap() * 1.4)) * rnd(0.8, 1.2);
 
-// A leaving face: every finished contour peels off and flows away in its own direction.
+// The contours a face has right now: the finished ones, and the lines still on their way to it
+// (those are taken over, so they carry on from where they are).
+function ringSources(o) {
+  const out = [], taken = new Set();
+  for (let k = 0; k < o.rings; k++) {
+    if (o.ready[k]) { out.push({ pts: o.polys.pts[k].slice(), style: o.polys.style[k] }); continue; }
+    const st = strands.find((q) => q.target && q.target.s === o && q.target.k === k);
+    if (st) { out.push({ pts: st.rev && !st.lerp ? reversed(st.pts) : st.pts.slice(), style: st.cur || st }); taken.add(st); }
+  }
+  if (taken.size) for (let i = strands.length - 1; i >= 0; i--) if (taken.has(strands[i])) strands.splice(i, 1);
+  return out;
+}
+
+// A leaving face: every contour peels off and flows away in its own direction.
 function unravel(s) {
   const base = Math.random() * Math.PI * 2;
-  for (let k = 0; k < s.rings; k++) {
-    if (!s.ready[k]) continue;
-    const pts = s.polys.pts[k];
-    flowOff(Math.random() < 0.5 ? pts.slice() : reversed(pts), s.polys.style[k], base + rnd(-1.6, 1.6), flowT() + k * rnd(0, 0.04));
-  }
+  ringSources(s).forEach((src, k) => {
+    flowOff(Math.random() < 0.5 ? src.pts : reversed(src.pts), src.style, base + rnd(-1.6, 1.6), flowT() + k * rnd(0, 0.03));
+  });
 }
 
 // A new face: its contours noodle in from off the screen, from roughly one side, and coalesce.
 function formStrands(s, only) {
-  computeRings(s);
   s.fade = 1; s.life = 'live'; s.alphaNow = s.alpha;
   computeRings(s);
   const cx = s.x - s.dir * 0.43 * s.h, cy = s.y + 0.6 * s.h;
@@ -928,37 +981,51 @@ function formStrands(s, only) {
     const S = exitPoint(cx, cy, th), v = [-Math.cos(th), -Math.sin(th)];
     const L1 = polyLen(s.polys.pts[k]);
     const prefix = new Float32Array([S[0] - v[0] * L1, S[1] - v[1] * L1, S[0], S[1]]);
-    newStrand(prefix, s.polys.style[k], { target: { s, k }, T: formT() + k * 0.03, rev: Math.random() < 0.5 });
+    newStrand(prefix, s.polys.style[k], { target: { s, k }, T: formT() + k * 0.012, rev: Math.random() < 0.5 });
   }
 }
 
 // One face into another: contour for contour; spare old ones flow off, missing new ones fly in.
-function morphStrands(o, n) {
-  computeRings(n);
+// When it is the same person moving (glide), each contour morphs point by point to its new place;
+// otherwise the lines peel off and travel.
+const glideT = () => Math.max(0.25, Math.min(0.9, beatGap() * 0.85)) * rnd(0.85, 1.1);
+function morphStrands(o, n, glide) {
   n.fade = 1; n.life = 'live'; n.alphaNow = n.alpha;
   computeRings(n);
-  const from = [];
-  for (let k = 0; k < o.rings; k++) if (o.ready[k]) from.push(k);
-  const missing = [];
+  const from = ringSources(o), missing = [];
   for (let k = 0; k < n.rings; k++) {
     n.ready[k] = false;
     if (k < from.length) {
-      const pts = o.polys.pts[from[k]];
-      newStrand(Math.random() < 0.5 ? pts.slice() : reversed(pts), o.polys.style[from[k]], { target: { s: n, k }, T: formT() + k * 0.03, rev: Math.random() < 0.5 });
-    } else missing.push(k);
+      if (glide) newStrand(from[k].pts, from[k].style, { target: { s: n, k }, T: glideT(), lerp: true });
+      else newStrand(Math.random() < 0.5 ? from[k].pts : reversed(from[k].pts), from[k].style, { target: { s: n, k }, T: formT() + k * 0.012, rev: Math.random() < 0.5 });
+    }
+    else missing.push(k);
   }
   if (missing.length) formStrands(n, missing);
   const base = Math.random() * Math.PI * 2;
-  for (let q = n.rings; q < from.length; q++) flowOff(o.polys.pts[from[q]].slice(), o.polys.style[from[q]], base + rnd(-1.6, 1.6), flowT());
+  for (let q = n.rings; q < from.length; q++) flowOff(from[q].pts, from[q].style, base + rnd(-1.6, 1.6), flowT());
 }
 
-// A whole new scene: old faces turn into new ones in random pairs; the rest unravel or form.
+// A new beat: each person carries their contours to their new place. Someone who has left the
+// story unravels; someone new is formed. When the story itself changes, old faces turn into new
+// ones in random pairs.
 function morphCast(old, fresh) {
-  const need = old.reduce((t, s) => t + s.rings, 0) + fresh.reduce((t, s) => t + s.rings, 0);
+  const need = fresh.reduce((t, s) => t + s.rings, 0);
   if (strands.length + need > STRAND_CAP) return; // too busy: the plain fade
-  const olds = old.slice().sort(() => Math.random() - 0.5);
-  fresh.forEach((n, i) => { if (i < olds.length) morphStrands(olds[i], n); else formStrands(n); });
-  for (let i = fresh.length; i < olds.length; i++) unravel(olds[i]);
+  const byId = new Map();
+  for (const o of old) if (o.id !== undefined && o.storyName === story.name) byId.set(o.id, o);
+  const pairs = [], used = new Set();
+  for (const n of fresh) {
+    const o = byId.get(n.id);
+    if (o && !used.has(o)) { used.add(o); pairs.push([o, n]); }
+  }
+  const restOld = old.filter((o) => !used.has(o)).sort(() => Math.random() - 0.5);
+  const restNew = fresh.filter((n) => !pairs.some((p) => p[1] === n));
+  const glide = pairs.length > 0;
+  if (!glide) while (restOld.length && restNew.length) pairs.push([restOld.pop(), restNew.shift()]);
+  for (const [o, n] of pairs) morphStrands(o, n, glide);
+  for (const n of restNew) formStrands(n);
+  for (const o of restOld) unravel(o);
 }
 
 function updateStrands(ctx, dt) {
@@ -973,17 +1040,20 @@ function updateStrands(ctx, dt) {
     st.t += dt;
     const u = clamp01(st.t / st.T);
     const e = st.easeIn ? u * u : smooth01(u);
-    buildTrack(st);
-    const total = track.c[track.n - 1];
-    const L1 = st.target ? st.L1 : st.L0;
-    const L = lerp(st.L0, L1, e);
-    windowOf(st.pts, e * Math.max(0, total - L), L);
+    if (st.lerp) glideStep(st, e);
+    else {
+      buildTrack(st);
+      const total = track.c[track.n - 1];
+      const L = lerp(st.L0, st.target ? st.L1 : st.L0, e);
+      windowOf(st.pts, e * Math.max(0, total - L), L);
+    }
     let rgb = st.rgb, w = st.w, a = st.a;
     if (st.target) {
       const ts = st.target.s.polys.style[st.target.k];
       rgb = [lerp(st.rgb[0], ts.rgb[0], e), lerp(st.rgb[1], ts.rgb[1], e), lerp(st.rgb[2], ts.rgb[2], e)];
       w = lerp(st.w, ts.w, e); a = lerp(st.a, ts.a, e);
     }
+    st.cur = { rgb, w, a };
     strokePoly(ctx, st.pts, rgb, w, a);
     if (u >= 1) {
       if (st.target) st.target.s.ready[st.target.k] = true;
@@ -997,6 +1067,21 @@ function pushPt(x, y) {
   track.x[n] = x; track.y[n] = y;
   track.c[n] = n ? track.c[n - 1] + Math.hypot(x - track.x[n - 1], y - track.y[n - 1]) : 0;
   track.n++;
+}
+
+// A glide: every point moves from the old contour to the new one, the change running along the line
+// from the back of the neck to the front, with a sideways wave while it travels.
+function glideStep(st, e) {
+  const from = st.prefix, to = st.target.s.polys.pts[st.target.k];
+  const D = Math.min(width, height), stg = 0.6, amp = st.amp * D * 0.6;
+  for (let q = 0; q < NPTS; q++) {
+    const f = q / (NPTS - 1), eq = smooth01(e * (1 + stg) - stg * f);
+    const x0 = from[2 * q], y0 = from[2 * q + 1], x1 = to[2 * q], y1 = to[2 * q + 1];
+    const dx = x1 - x0, dy = y1 - y0, d = Math.hypot(dx, dy) || 1;
+    const wv = Math.min(amp, d * 0.3) * Math.sin(Math.PI * eq) * Math.sin(f * Math.PI * 2 * (st.freq + 1) + st.ph);
+    st.pts[2 * q] = x0 + dx * eq - (dy / d) * wv;
+    st.pts[2 * q + 1] = y0 + dy * eq + (dx / d) * wv;
+  }
 }
 
 // The strand's whole track for this frame (the target may have moved).
@@ -1103,7 +1188,7 @@ function setupSourcePicker() {
     mood.fast = mood.slow = null;
     mood.n = 0;
     change.short = null; change.centFast = change.centSlow = null;
-    newCast();
+    newStory(); stepStory(true);
     newBackground();
     refresh();
   };
@@ -1199,7 +1284,7 @@ function keyPressed(e) {
   else if (k === 'h') document.body.classList.toggle('clean');
   else if (k === 'm') document.body.classList.toggle('no-meter');
   else if (k === 'p') toggleLowRes();
-  else if (k === 'n') newCast(0, true);
+  else if (k === 'n') { newStory(); stepStory(true); }
   else if (k === 'b') newBackground();
   else if (key === ' ') {
     if (started) togglePause();
