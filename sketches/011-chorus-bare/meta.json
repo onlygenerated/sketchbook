@@ -1,0 +1,9 @@
+{
+  "title": "Chorus (bare)",
+  "date": "2026-11-04",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "Chorus pared down to the singers: round heads made of stacked rows, mouths opening with their voices, heads lifting and bowing with the music.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 010-chorus-no-hair"
+}
