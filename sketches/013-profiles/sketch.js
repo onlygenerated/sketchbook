@@ -194,7 +194,7 @@ function drawHair(ctx, face, shp, px, sat, bri) {
   }
 }
 
-// Eye, brow, ear, nostril and the corner of the mouth, as lines.
+// Eye, brow and ear, as lines.
 function drawFeatures(ctx, shp, px, eyeOpen) {
   const m = shp.marks;
   ctx.lineCap = 'round';
@@ -257,20 +257,8 @@ function drawFeatures(ctx, shp, px, eyeOpen) {
   ctx.quadraticCurveTo(ex - w * 0.1, ey - w * 1.35, m.brow.x - 0.01, m.brow.y + 0.004);
   ctx.stroke();
 
-  // nostril wing
-  const n = m.nostril;
-  ctx.lineWidth = px * 1.6;
-  ctx.beginPath();
-  ctx.arc(n.x, n.y, n.r, Math.PI * 0.62, Math.PI * 1.95);
-  ctx.stroke();
-
-  // corner of the mouth
-  ctx.lineWidth = px * 1.8;
-  ctx.beginPath();
-  ctx.moveTo(m.mouth.x - 0.012, m.mouth.y);
-  ctx.quadraticCurveTo(m.mouth.x - 0.035, m.mouth.y + 0.004, m.mouth.x - 0.05, m.mouth.y - 0.004);
-  ctx.stroke();
 }
+// (No nostril or mouth marks: the nose and lips come from the rows' own edges.)
 
 // The proportions the generator follows: thirds of the face, eye line, the square, the ear.
 function drawGuides(ctx, face, shp, px) {
