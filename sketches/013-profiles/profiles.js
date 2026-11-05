@@ -13,9 +13,10 @@
 //   const shape = Profiles.shape(head, open)  // open: 0..1 jaw opening (singing)
 //   shape.outline                             // closed polygon [[x, y], ...]
 //   Profiles.spans(shape.outline, y)          // [[x0, x1], ...] where a row at height y is inside
-//   shape.marks                               // eye, ear, nostril, mouth, hairline, skull: for drawing details
+//   shape.marks                               // eye, brow, ear, mouth, chin, tip: for drawing details
 (() => {
   const G = 0.86; // x of the brow (glabella); the back of the skull is near 0
+  const lerp = (a, b, t) => a + (b - a) * t;
 
   const KINDS = ['child', 'fem', 'masc', 'elder', 'adult'];
   const KIND_WEIGHTS = [14, 28, 28, 12, 18];
@@ -35,7 +36,7 @@
     h.forehead = child ? u(-0.01, 0.015) : u(0.0, fem ? 0.04 : 0.07); // extra slope back at the hairline
     h.brow = masc ? u(0.012, 0.038) : fem ? u(0.0, 0.012) : child ? u(-0.006, 0.002) : u(0.003, 0.022);
     h.nasion = child ? u(0.025, 0.04) : u(0.008, 0.05);             // how deep the bridge sits
-    h.noseProj = child ? u(0.04, 0.07) : elder ? u(0.09, 0.16) : u(0.075, 0.15); // tip ahead of the brow
+    h.noseProj = child ? u(0.035, 0.06) : elder ? u(0.075, 0.135) : u(0.06, 0.12); // tip ahead of the brow
     h.noseHump = child ? u(-0.02, -0.005) : u(-0.025, masc || elder ? 0.04 : 0.022); // + convex, - scooped
     h.tipDrop = child ? u(-0.02, -0.005) : u(-0.02, elder ? 0.05 : 0.03); // + droops, - turns up
     h.nostril = u(0.9, 1.2);
@@ -96,7 +97,7 @@
     const hinge = [h.earX + 0.075, yN - 0.06];
     const jawA = 0.22 * open;
 
-    const tipX = G + h.noseProj, tipY = yN - 0.032 + h.tipDrop * 0.6;
+    const tipX = G + h.noseProj, tipY = Math.min(yN - 0.026, yN - 0.034 + h.tipDrop * 0.6);
     const nasX = G - h.nasion, nasY = yBr + 0.035;
     const subX = G - 0.012 + h.lipFwd * 0.3;
     const chinX = G + h.chin;
@@ -114,9 +115,10 @@
       [G + h.brow, yBr - 0.006],                                            // brow
       [nasX, nasY],                                                         // bridge
       [(nasX + tipX) / 2 + h.noseHump, (nasY + tipY) / 2],                  // ridge of the nose
-      [tipX, tipY],                                                         // tip
-      [tipX - 0.012, tipY + 0.02],                                          // under the tip
-      [tipX - 0.036 * h.nostril, yN - 0.007],                               // nostril edge
+      [tipX - 0.012, tipY - 0.016],                                         // just above the tip
+      [tipX, tipY - 0.002],                                                 // tip (rounded by its neighbors)
+      [tipX - 0.011, tipY + 0.013],                                         // under the tip
+      [tipX - 0.034 * h.nostril, Math.min(yN - 0.006, tipY + 0.02)],        // underside of the nose
       [subX, yN],                                                           // base of the nose
       [lipTopX, yN + (yS - yN) * 0.62],                                     // upper lip
       [stomX, yS - 0.003],                                                  // upper edge of the mouth
@@ -131,15 +133,18 @@
       [throatX - h.neckSlant * 0.25, 1.35],
       [throatX - h.neckSlant * 0.55, 1.7],                                  // neck, front
     ];
-    const napeX = throatX - h.neck;
-    // The back of the skull comes down to about the level of the nose, then curves in under the
-    // skull (the hollow above the nape) and down the back of the neck.
+    // The back of the skull comes down to about the level of the nose, then curves gently in (the
+    // hollow above the nape) to the back of the neck. The neck's back edge stays close under the
+    // skull, so a thin neck can't leave a step.
     const yNape = yN - 0.03;
     const aN = Math.PI + Math.asin(Math.max(-0.95, Math.min(0.95, (yNape - cy) / ry)));
+    const skullBack = ell(aN);
+    const napeX = Math.min(throatX - h.neck, skullBack[0] + 0.07);
     const back = [
       [napeX - h.neckSlant * 0.55 - 0.02, 1.7],                             // neck, back
       [napeX - h.neckSlant * 0.25 - 0.01, 1.3],
-      [napeX, yS + 0.06],                                                   // nape
+      [napeX, yS + 0.12],                                                   // back of the neck
+      [lerp(skullBack[0], napeX, 0.65), (yNape + yS + 0.12) / 2],           // the hollow above the nape
     ];
     const steps = 10;
     for (let i = 0; i <= steps; i++) {
@@ -164,7 +169,6 @@
         eye: { x: nasX - 0.062, y: yEye, w: 0.034 },
         brow: { x: G - 0.02, y: yBr - 0.012 },
         ear: { x: h.earX, y: yBr + 0.006 + earH * 0.5, h: earH, w: earH * 0.55, tilt: h.earTilt },
-        nostril: { x: tipX - 0.058 * h.nostril, y: yN - 0.02, r: 0.017 * h.nostril },
         mouth: { x: stomX, y: (yS + lowStom[1]) / 2, open },
         chin: jaw([chinX, 0.955]),
         tip: [tipX, tipY],
