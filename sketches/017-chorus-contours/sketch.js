@@ -1363,6 +1363,37 @@ function windowOf(out, s0, L) {
 // ---------------------------------------------------------------------------------------------------
 const LOCAL_SONG = 'private/acmpp07.mp3'; // Phil's own copy; git-ignored, never published
 
+// Songs picked from a file are remembered in this browser (IndexedDB), so they show up in the menu
+// next time, on the live site too. They stay on this device: nothing is uploaded. The last four
+// are kept.
+const songStore = (() => {
+  const open = () => new Promise((res, rej) => {
+    const r = indexedDB.open('sketchbook-songs', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('songs', { keyPath: 'name' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  const run = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('songs', mode), req = fn(t.objectStore('songs'));
+      t.oncomplete = () => res(req ? req.result : undefined);
+      t.onerror = () => rej(t.error);
+    });
+  };
+  const list = async () => { try { return ((await run('readonly', (st) => st.getAll())) || []).sort((a, b) => b.at - a.at); } catch (e) { return []; } };
+  return {
+    list,
+    async save(file) {
+      try {
+        await run('readwrite', (st) => st.put({ name: file.name, blob: file, at: Date.now() }));
+        for (const old of (await list()).slice(4)) await run('readwrite', (st) => st.delete(old.name));
+      } catch (e) { /* private browsing or storage blocked: just don't remember it */ }
+    },
+    async clear() { try { await run('readwrite', (st) => st.clear()); } catch (e) {} },
+  };
+})();
+
 function setupSourcePicker() {
   const picker = document.getElementById('picker');
   const note = document.getElementById('picker-note');
@@ -1430,11 +1461,35 @@ function setupSourcePicker() {
     try { await Mic.startFile(LOCAL_SONG); device.hidden = true; started_('Guys Eyes'); }
     catch (e) { note.textContent = "couldn't play the song"; }
   });
+  const songName = (n) => n.replace(/\.[a-z0-9]+$/i, '');
+  const saved = document.getElementById('saved-songs');
+  const showSaved = async () => {
+    const songs = await songStore.list();
+    saved.replaceChildren(...songs.map((sg) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = `play ${songName(sg.name)}`;
+      b.addEventListener('click', async () => {
+        note.textContent = `loading ${sg.name}...`;
+        try { await Mic.startFile(sg.blob); device.hidden = true; started_(songName(sg.name)); songStore.save(new File([sg.blob], sg.name)); }
+        catch (e) { note.textContent = `couldn't play ${sg.name}`; }
+      });
+      return b;
+    }));
+    if (songs.length) {
+      const forget = document.createElement('button');
+      forget.type = 'button'; forget.className = 'forget';
+      forget.textContent = 'forget saved songs';
+      forget.addEventListener('click', async () => { await songStore.clear(); showSaved(); });
+      saved.append(forget);
+    }
+  };
+  showSaved();
   fileInput.addEventListener('change', async () => {
     const f = fileInput.files && fileInput.files[0];
     if (!f) return;
     note.textContent = `loading ${f.name}...`;
-    try { await Mic.startFile(f); device.hidden = true; started_(f.name); }
+    try { await Mic.startFile(f); device.hidden = true; started_(songName(f.name)); await songStore.save(f); showSaved(); }
     catch (e) { note.textContent = `couldn't play ${f.name}`; }
   });
   useLaptop.addEventListener('click', async () => {

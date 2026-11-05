@@ -41,6 +41,8 @@
     }
     .picker button:hover, .picker label:hover { border-color: #f2efe8; }
     .picker button[hidden] { display: none; }
+    #saved-songs { display: contents; }
+    .picker button.forget { border: none; background: none; padding: 2px; font-size: 12px; opacity: 0.7; text-decoration: underline; }
     .picker-note { margin: 4px 0 0; min-height: 1.5em; opacity: 0.85; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
 
     /* Frame-rate readout (fork of 003). Sits under the top bar, visible while animating. */
@@ -138,6 +140,7 @@
     <h1>Chorus</h1>
     <button type="button" id="use-laptop">use laptop audio</button>
     <button type="button" id="play-local" hidden>play Guys Eyes</button>
+    <div id="saved-songs"></div>
     <label>choose an audio file<input type="file" id="file" accept="audio/*" hidden></label>
     <button type="button" id="use-mic">use microphone</button>
     <p class="picker-note" id="picker-note"></p>
@@ -155,9 +158,9 @@
     <span id="lowres-flag" hidden>low-res</span>
     <button type="button" id="live-change">change source</button>
     <button type="button" id="live-full">fullscreen</button>
-    <span class="keys">F fullscreen &middot; H hide &middot; M meter &middot; P low-res &middot; N new story &middot; B new background &middot; Space pause &middot; v12</span>
+    <span class="keys">F fullscreen &middot; H hide &middot; M meter &middot; P low-res &middot; N new story &middot; B new background &middot; Space pause &middot; v13</span>
   </div>
-  <script src="../../shared/profiles.js?v=12"></script>
-  <script src="sketch.js?v=12"></script>
+  <script src="../../shared/profiles.js?v=13"></script>
+  <script src="sketch.js?v=13"></script>
 </body>
 </html>
