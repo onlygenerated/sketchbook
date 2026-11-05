@@ -97,7 +97,7 @@
     const hinge = [h.earX + 0.075, yN - 0.06];
     const jawA = 0.22 * open;
 
-    const tipX = G + h.noseProj, tipY = Math.min(yN - 0.026, yN - 0.034 + h.tipDrop * 0.6);
+    const tipX = G + h.noseProj, tipY = Math.min(yN - 0.034, yN - 0.042 + h.tipDrop * 0.6);
     const nasX = G - h.nasion, nasY = yBr + 0.035;
     const subX = G - 0.012 + h.lipFwd * 0.3;
     const chinX = G + h.chin;
@@ -115,10 +115,12 @@
       [G + h.brow, yBr - 0.006],                                            // brow
       [nasX, nasY],                                                         // bridge
       [(nasX + tipX) / 2 + h.noseHump, (nasY + tipY) / 2],                  // ridge of the nose
-      [tipX - 0.012, tipY - 0.016],                                         // just above the tip
-      [tipX, tipY - 0.002],                                                 // tip (rounded by its neighbors)
-      [tipX - 0.011, tipY + 0.013],                                         // under the tip
-      [tipX - 0.034 * h.nostril, Math.min(yN - 0.006, tipY + 0.02)],        // underside of the nose
+      // The tip is a rounded lobe about 4% of the head tall, so several rows share it.
+      [tipX - 0.01, tipY - 0.032],                                          // above the tip
+      [tipX - 0.001, tipY - 0.013],                                         // front of the tip
+      [tipX - 0.002, tipY + 0.006],
+      [tipX - 0.016, tipY + 0.021],                                         // under the tip
+      [tipX - 0.036 * h.nostril, Math.min(yN - 0.005, tipY + 0.028)],       // underside of the nose
       [subX, yN],                                                           // base of the nose
       [lipTopX, yN + (yS - yN) * 0.62],                                     // upper lip
       [stomX, yS - 0.003],                                                  // upper edge of the mouth
@@ -133,18 +135,33 @@
       [throatX - h.neckSlant * 0.25, 1.35],
       [throatX - h.neckSlant * 0.55, 1.7],                                  // neck, front
     ];
-    // The back of the skull comes down to about the level of the nose, then curves gently in (the
-    // hollow above the nape) to the back of the neck. The neck's back edge stays close under the
-    // skull, so a thin neck can't leave a step.
-    const yNape = yN - 0.03;
-    const aN = Math.PI + Math.asin(Math.max(-0.95, Math.min(0.95, (yNape - cy) / ry)));
-    const skullBack = ell(aN);
-    const napeX = Math.min(throatX - h.neck, skullBack[0] + 0.07);
+    // The back of the neck: up from the shoulders, in to the hollow of the nape, then up into the skull
+    // along a line tangent to it. That line stays steep (at most about 30 degrees from vertical), as
+    // the neck muscles do, so the skull never overhangs with a flat ledge. Where it touches the skull
+    // is chosen so the neck gets its intended thickness at the nape.
+    const yM = yS + 0.1;
+    const napeAt = (a) => { // where the tangent at skull angle a reaches the height of the nape
+      const T = ell(a);
+      const dxdy = (rx * Math.abs(Math.sin(a))) / (ry * Math.abs(Math.cos(a)) + 1e-6);
+      return T[0] + Math.max(0, yM - T[1]) * dxdy;
+    };
+    const aLo = Math.PI + 0.02, aHi = Math.PI + Math.atan(0.6 * ry / rx);
+    const want = throatX - h.neck;
+    let aN;
+    if (napeAt(aHi) <= want) aN = aHi;
+    else if (napeAt(aLo) >= want) aN = aLo;
+    else {
+      let lo = aLo, hi = aHi;
+      for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (napeAt(m) < want) lo = m; else hi = m; }
+      aN = (lo + hi) / 2;
+    }
+    const T = ell(aN);
+    const M = [napeAt(aN), yM];                                              // the hollow of the nape
     const back = [
-      [napeX - h.neckSlant * 0.55 - 0.02, 1.7],                             // neck, back
-      [napeX - h.neckSlant * 0.25 - 0.01, 1.3],
-      [napeX, yS + 0.12],                                                   // back of the neck
-      [lerp(skullBack[0], napeX, 0.65), (yNape + yS + 0.12) / 2],           // the hollow above the nape
+      [M[0] - h.neckSlant * 0.55 - 0.02, 1.7],                              // neck, back
+      [M[0] - h.neckSlant * 0.25 - 0.01, 1.3],
+      M,
+      [lerp(M[0], T[0], 0.5), lerp(M[1], T[1], 0.5)],                       // along the tangent
     ];
     const steps = 10;
     for (let i = 0; i <= steps; i++) {
