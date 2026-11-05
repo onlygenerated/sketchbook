@@ -1,7 +1,24 @@
 {
   "generated": "2026-11-05",
-  "count": 9,
+  "count": 10,
   "sketches": [
+    {
+      "slug": "010-chorus-no-hair",
+      "number": 10,
+      "title": "Chorus (no hair)",
+      "date": "2026-11-04",
+      "tags": [
+        "generative",
+        "audio-reactive",
+        "portrait",
+        "live"
+      ],
+      "description": "009 with the hair turned off: the same scenes, voices and breath, with bare profiles.",
+      "status": "wip",
+      "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  tap to pause",
+      "path": "sketches/010-chorus-no-hair/",
+      "thumb": null
+    },
     {
       "slug": "009-chorus",
       "number": 9,

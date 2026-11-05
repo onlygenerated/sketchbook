@@ -1,0 +1,9 @@
+{
+  "title": "Chorus (no hair)",
+  "date": "2026-11-04",
+  "tags": ["generative", "audio-reactive", "portrait", "live"],
+  "description": "009 with the hair turned off: the same scenes, voices and breath, with bare profiles.",
+  "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  tap to pause",
+  "status": "wip",
+  "original": "fork of 009-chorus"
+}
