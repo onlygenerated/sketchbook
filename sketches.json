@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-05",
+  "generated": "2026-11-06",
   "count": 17,
   "sketches": [
     {
@@ -17,7 +17,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  wild slider  ·  N new story  ·  B new background  ·  tap to pause",
       "path": "sketches/017-chorus-contours/",
-      "thumb": null
+      "thumb": "sketches/017-chorus-contours/thumb.jpg"
     },
     {
       "slug": "016-chorus-frenetic",
@@ -34,7 +34,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
       "path": "sketches/016-chorus-frenetic/",
-      "thumb": null
+      "thumb": "sketches/016-chorus-frenetic/thumb.jpg"
     },
     {
       "slug": "015-chorus-silhouettes",
@@ -51,7 +51,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
       "path": "sketches/015-chorus-silhouettes/",
-      "thumb": null
+      "thumb": "sketches/015-chorus-silhouettes/thumb.jpg"
     },
     {
       "slug": "014-chorus-new-faces",
@@ -68,7 +68,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
       "path": "sketches/014-chorus-new-faces/",
-      "thumb": null
+      "thumb": "sketches/014-chorus-new-faces/thumb.jpg"
     },
     {
       "slug": "013-profiles",
@@ -84,7 +84,7 @@
       "status": "wip",
       "interaction": "tap a face for a new one  ·  style, guides and sing buttons",
       "path": "sketches/013-profiles/",
-      "thumb": null
+      "thumb": "sketches/013-profiles/thumb.jpg"
     },
     {
       "slug": "012-chorus-ensemble",
@@ -101,7 +101,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  B new background  ·  tap to pause",
       "path": "sketches/012-chorus-ensemble/",
-      "thumb": null
+      "thumb": "sketches/012-chorus-ensemble/thumb.jpg"
     },
     {
       "slug": "011-chorus-bare",
@@ -118,7 +118,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  tap to pause",
       "path": "sketches/011-chorus-bare/",
-      "thumb": null
+      "thumb": "sketches/011-chorus-bare/thumb.jpg"
     },
     {
       "slug": "010-chorus-no-hair",
@@ -135,7 +135,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  tap to pause",
       "path": "sketches/010-chorus-no-hair/",
-      "thumb": null
+      "thumb": "sketches/010-chorus-no-hair/thumb.jpg"
     },
     {
       "slug": "009-chorus",
@@ -152,7 +152,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  N new scene  ·  tap to pause",
       "path": "sketches/009-chorus/",
-      "thumb": null
+      "thumb": "sketches/009-chorus/thumb.jpg"
     },
     {
       "slug": "008-disentanglemation-guys-eyes-wide",
@@ -169,7 +169,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  tap to pause",
       "path": "sketches/008-disentanglemation-guys-eyes-wide/",
-      "thumb": null
+      "thumb": "sketches/008-disentanglemation-guys-eyes-wide/thumb.jpg"
     },
     {
       "slug": "007-disentanglemation-guys-eyes-live",
@@ -186,7 +186,7 @@
       "status": "wip",
       "interaction": "use laptop audio, a song or the mic  ·  tap to pause",
       "path": "sketches/007-disentanglemation-guys-eyes-live/",
-      "thumb": null
+      "thumb": "sketches/007-disentanglemation-guys-eyes-live/thumb.jpg"
     },
     {
       "slug": "006-disentanglemation-guys-eyes-fast",
@@ -203,7 +203,7 @@
       "status": "wip",
       "interaction": "pick a song or the mic  ·  tap to pause and resume",
       "path": "sketches/006-disentanglemation-guys-eyes-fast/",
-      "thumb": null
+      "thumb": "sketches/006-disentanglemation-guys-eyes-fast/thumb.jpg"
     },
     {
       "slug": "005-disentanglemation-guys-eyes-optimized",
@@ -220,7 +220,7 @@
       "status": "done",
       "interaction": "pick a song or the mic  ·  tap to pause and resume",
       "path": "sketches/005-disentanglemation-guys-eyes-optimized/",
-      "thumb": null
+      "thumb": "sketches/005-disentanglemation-guys-eyes-optimized/thumb.jpg"
     },
     {
       "slug": "004-disentanglemation-guys-eyes-fps",
@@ -237,7 +237,7 @@
       "status": "wip",
       "interaction": "pick a song or the mic  ·  tap to pause and resume",
       "path": "sketches/004-disentanglemation-guys-eyes-fps/",
-      "thumb": null
+      "thumb": "sketches/004-disentanglemation-guys-eyes-fps/thumb.jpg"
     },
     {
       "slug": "003-disentanglemation-guys-eyes",
@@ -253,7 +253,7 @@
       "status": "done",
       "interaction": "pick a song or the mic  ·  tap to pause and resume",
       "path": "sketches/003-disentanglemation-guys-eyes/",
-      "thumb": "sketches/003-disentanglemation-guys-eyes/thumb.png"
+      "thumb": "sketches/003-disentanglemation-guys-eyes/thumb.jpg"
     },
     {
       "slug": "002-mic-bloom",
@@ -269,7 +269,7 @@
       "status": "done",
       "interaction": "tap to start the mic  ·  tap again to shift colors",
       "path": "sketches/002-mic-bloom/",
-      "thumb": "sketches/002-mic-bloom/thumb.png"
+      "thumb": "sketches/002-mic-bloom/thumb.jpg"
     },
     {
       "slug": "001-flow-field",
@@ -285,7 +285,7 @@
       "status": "done",
       "interaction": "tap for a new seed  ·  hold to make a vortex",
       "path": "sketches/001-flow-field/",
-      "thumb": "sketches/001-flow-field/thumb.png"
+      "thumb": "sketches/001-flow-field/thumb.jpg"
     }
   ]
 }

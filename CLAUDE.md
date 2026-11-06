@@ -15,7 +15,7 @@ sketches/
     index.html        loads p5 from the CDN, shared/shell, then sketch.js
     sketch.js         the sketch
     meta.json         title, date, tags, description, status
-    thumb.png         optional gallery thumbnail (square, about 600px)
+    thumb.jpg         gallery thumbnail (square, 600px; a frame of the running sketch)
 shared/
   shell.css, shell.js overlay with title, back link and save-PNG button
   audio.js            Mic helper for audio-reactive sketches
